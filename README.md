@@ -51,6 +51,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev
 ```
 
+![Screenshot 2025-04-01 at 3 38 24 PM](https://github.com/user-attachments/assets/f93aa02e-5497-440e-9040-eb149701226b)
+
 Here we can see the two assistants easily and test them.
 
 Pass in an example email to either assistant to see the output:
@@ -107,6 +109,18 @@ The evaluation framework in the `eval` folder compares the performance of both a
    - Generates a comparative bar chart showing performance of both approaches
    - Saves results to `eval/results/` with timestamps
    - Provides clear metrics on which assistant performed better
+
+### Run 
+
+```
+python -m eval.evaluate_triage
+```
+
+This will kick off evaluation on a dataset defined in eval/triage_dataset.py. We will load ths into LangSmith and then evaluate both agents on it.
+
+We can compare the results in LangSmith. [Here](https://smith.langchain.com/public/1e3765c9-3455-4243-bb75-e4d865cc5960/d) is an example dataset link.
+
+![Screenshot 2025-04-01 at 3 04 05 PM](https://github.com/user-attachments/assets/0545212b-4563-4ca8-a748-abe31c84ee18)
 
 ## Human-in-the-loop 
 
