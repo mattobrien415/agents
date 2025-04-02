@@ -5,6 +5,7 @@ In this workshop, we will build an email assistant that can triage incoming emai
 ## Environment Setup 
 
 ### Prerequisites
+
 1. Set up your LangSmith API key as an environment variable:
    ```bash
    export LANGCHAIN_API_KEY=your_langsmith_api_key
@@ -17,11 +18,6 @@ In this workshop, we will build an email assistant that can triage incoming emai
    ```bash
    export ANTHROPIC_API_KEY=your_anthropic_api_key
    ```
-
-For each, you can use any model support by `init_chat_model` shown [here](https://python.langchain.com/api_reference/langchain/chat_models/langchain.chat_models.base.init_chat_model.html) and simply modify the `llm` variable in the respective files:
-* `src/email_assistant/email_assistant_react.py`
-* `src/email_assistant/email_assistant.py`
-* `eval/evaluate_triage.py`
 
 Create a virtual environment and activate it:
 ```shell
@@ -70,8 +66,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev
 ```
 
-![Screenshot 2025-04-01 at 3 38 24 PM](https://github.com/user-attachments/assets/f93aa02e-5497-440e-9040-eb149701226b)
-
 Here we can see the two assistants easily and test them. You will see in the `langgrah.json` that we point to the compiled graphs that we want to load.
 ```shell
   "graphs": {
@@ -79,6 +73,8 @@ Here we can see the two assistants easily and test them. You will see in the `la
       "email_assistant_react": "./src/email_assistant/email_assistant_react.py:email_assistant_react"
     },
 ```
+
+![Screenshot 2025-04-01 at 3 38 24 PM](https://github.com/user-attachments/assets/f93aa02e-5497-440e-9040-eb149701226b)
 
 In studio, you can test some email inputs directly to see what the assistant will do:
 ```shell
@@ -187,14 +183,14 @@ You can also find an example dataset with previous evaluation results [here](htt
 
 ### Adding HITL to the Workflow 
 
-To add HITL to the workflow, we need to modify the `langgraph.json` file to point to the new graph that includes HITL: 
+Modify the `langgraph.json` file to point to the new graph that includes HITL: 
 ```shell
   "graphs": {
       "email_assistant": "./src/email_assistant/email_assistant.py:email_assistant_hitl",
     },
 ```
 
-This allows us to interrupt the workflow after the triage decision and review it! For this, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox). First, start the server:
+This allows us to interrupt the workflow after the triage decision and review it. For this, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox). First, start the server:
 ```shell
 $ langgraph dev 
 ```
@@ -210,6 +206,96 @@ Select `add inbox` provide it:
 
 Pass any of the the above inputs to your assistant in Studio, and you will see the thread in Agent Inbox. You can review the triage decision and respond to the email. 
 
+### Agent Inbox Details
+
+The HITL implementation works by pausing the workflow at the triage step to get user input on the decision. Here's how it works:
+
+#### 1. Creating the Request
+
+```python
+request = {
+    "action_request": {
+        "action": "Review Triage",
+        "args": {}
+    },
+    "config": {
+        "allow_ignore": True,  
+        "allow_respond": True, 
+        "allow_edit": False, 
+        "allow_accept": True, 
+    },
+    "description": email_markdown,
+}
+```
+
+This creates a package of information that will be displayed in Agent Inbox:
+- `action_request`: Describes what type of action this is ("Review Triage") and any initial values
+- `config`: Defines what buttons will appear for the user in Agent Inbox:
+  - `allow_ignore`: Shows a "Dismiss" or "Ignore" button
+  - `allow_respond`: Shows a text input field for free-form responses
+  - `allow_edit`: Shows an edit interface (disabled for triage review)
+  - `allow_accept`: Shows an "Accept" button to approve the triage decision
+- `description`: Contains the formatted email content and triage decision that will be displayed
+
+#### 2. Sending to Agent Inbox
+
+```python
+response = interrupt([request])[0]
+```
+
+This line does several important things:
+- It pauses the current execution of the workflow
+- It sends the request to Agent Inbox
+- The request appears as a new item in the user's Agent Inbox interface
+- The workflow waits until the user interacts with the item
+- When the user takes an action (ignores, responds, or accepts), that response is returned
+
+#### 3. What the User Sees
+
+The user will see a new item in their Agent Inbox with:
+- The email content formatted nicely (from email_markdown)
+- The triage decision (e.g., "📧 Classification: RESPOND - This email requires a response")
+- A set of action buttons based on the config settings
+- A text input field if allow_respond is True
+
+#### 4. Handling User Responses
+
+The workflow handles different user responses:
+
+```python
+# Accept the decision to respond  
+if response["type"] == "accept":
+    # Go to the response agent
+    goto = "response_agent"
+    # Add the email to the messages
+    messages.append({"role": "user",
+                     "content": f"Respond to the email {state['email_input']}"
+                     })
+# Ignore the email 
+elif response["type"] == "ignore":
+    goto = END
+    # Add the email to the messages
+    messages.append({"role": "user",
+                     "content": "User feedback: Ignore email"
+                     })
+elif response["type"] == "response":
+    # Add user_input to memory
+    user_input = response["args"]
+    messages.append({"role": "user",
+                     "content": f"User feedback: {user_input}"
+                     })
+    goto = END
+```
+
+This mechanism creates a clean user experience where:
+1. The assistant classifies an email (respond, ignore, or notify)
+2. The user reviews this decision in Agent Inbox with appropriate options
+3. The workflow waits for their input
+4. Once they respond, the workflow continues executing with their response
+5. The user's feedback is captured in the messages for potential future use
+
+In our implementation, we've customized the UI options for different triage decisions. For example, when an email is classified as "respond", we don't show the "ignore" button, encouraging the user to either accept the decision or provide feedback.
+
 < Add screenshot >
 
 ## Memory 
@@ -221,3 +307,16 @@ TODO: Add memory to the workflow.
 The graph already can be run with LangGraph Platform locally using the `langgraph dev` command. 
 
 TODO: Add remote deployment instructions. 
+
+## Customization 
+
+You can use any model support by `init_chat_model` shown [here](https://python.langchain.com/api_reference/langchain/chat_models/langchain.chat_models.base.init_chat_model.html).
+
+Simply modify the `llm` variable in the respective files:
+* `src/email_assistant/email_assistant_react.py`
+* `src/email_assistant/email_assistant.py`
+* `eval/evaluate_triage.py`
+
+You can also modify the assistant and evaluator prompts in:
+* `src/email_assistant/prompts.py` 
+* `src/eval/prompt.py`
