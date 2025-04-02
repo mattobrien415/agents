@@ -252,11 +252,17 @@ This line does several important things:
 
 #### 3. What the User Sees
 
+The agent inbox has each thread from Studio:
+
+![Screenshot 2025-04-02 at 4 37 06 PM](https://github.com/user-attachments/assets/e45e063b-6e54-49b7-8fef-a0280b52e683)
+
 The user will see a new item in their Agent Inbox with:
 - The email content formatted nicely (from email_markdown)
 - The triage decision (e.g., "📧 Classification: RESPOND - This email requires a response")
 - A set of action buttons based on the config settings
 - A text input field if allow_respond is True
+
+![Screenshot 2025-04-02 at 4 14 31 PM](https://github.com/user-attachments/assets/160c357e-f4a8-4626-b74c-fef17b85127b)
 
 #### 4. Handling User Responses
 
@@ -295,8 +301,6 @@ This mechanism creates a clean user experience where:
 5. The user's feedback is captured in the messages for potential future use
 
 In our implementation, we've customized the UI options for different triage decisions. For example, when an email is classified as "respond", we don't show the "ignore" button, encouraging the user to either accept the decision or provide feedback.
-
-< Add screenshot >
 
 ## Memory 
 
