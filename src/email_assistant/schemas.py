@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
-from typing_extensions import TypedDict, Literal, Annotated, Optional
-from langgraph.graph import add_messages
+from typing import Optional
+from typing_extensions import TypedDict, Literal, Annotated
+from langgraph.graph import MessagesState
 
 class RouterSchema(BaseModel):
     """Analyze the unread email and route it according to its content."""
@@ -14,27 +15,16 @@ class RouterSchema(BaseModel):
         "'respond' for emails that need a reply",
     )
 
-class State(TypedDict):
+class StateInput(TypedDict):
+    # This is the input to the state
+    email_input: dict
+
+class State(MessagesState):
+    # This state class has the messages key build in
+    # But, we can add additional keys to it
+    documents: list[str]
     email_input: dict
     classification_decision: Literal["ignore", "respond", "notify"]
-    messages: Annotated[list, add_messages]
-    use_semantic_memory: bool
-
-# Define schemas for Agent Inbox integration
-class HumanInterruptConfig(TypedDict):
-    allow_ignore: bool
-    allow_respond: bool
-    allow_edit: bool
-    allow_accept: bool
-
-class ActionRequest(TypedDict):
-    action: str
-    args: dict
-
-class HumanInterrupt(TypedDict):
-    action_request: ActionRequest
-    config: HumanInterruptConfig
-    description: Optional[str]
 
 # TODO: Load into memory 
 profile = {

@@ -1,4 +1,6 @@
 from langchain_core.messages import convert_to_openai_messages
+from langgraph.graph import MessagesState
+import json
 
 def format_messages(messages):
     """Format a list of chat messages into a readable string format.
@@ -28,6 +30,61 @@ def format_messages(messages):
         formatted_output += message_str
     
     return formatted_output.strip()
+
+def format_email_markdown(subject, author, to, email_thread):
+    """Format email details into a nicely formatted markdown string for display"""
+    return f"""# Original Email
+
+**Subject**: {subject}
+**From**: {author}
+**To**: {to}
+
+{email_thread}
+
+---
+"""
+
+def format_for_display(state, tool_call):
+    """Format content for display in Agent Inbox
+    
+    Args:
+        state: Current message state
+        tool_call: The tool call to format
+    """
+    # Initialize empty display
+    display = ""
+    
+    # Add tool call information
+    if tool_call["name"] == "write_email":
+        display += f"""# Email Draft
+
+**To**: {tool_call["args"].get("to")}
+**Subject**: {tool_call["args"].get("subject")}
+
+{tool_call["args"].get("content")}
+"""
+    elif tool_call["name"] == "schedule_meeting":
+        display += f"""# Calendar Invite
+
+**Meeting**: {tool_call["args"].get("subject")}
+**Attendees**: {', '.join(tool_call["args"].get("attendees"))}
+**Duration**: {tool_call["args"].get("duration_minutes")} minutes
+**Day**: {tool_call["args"].get("preferred_day")}
+"""
+    elif tool_call["name"] == "Question":
+        # Special formatting for questions to make them clear
+        display += f"""# Question for User
+
+{tool_call["args"].get("content")}
+"""
+    else:
+        # Generic format for other tools
+        display += f"""# Tool Call: {tool_call["name"]}
+
+Arguments:
+{json.dumps(tool_call["args"], indent=2)}
+"""
+    return display
 
 def parse_email(email_input: dict) -> dict:
     """Parse an email input dictionary.

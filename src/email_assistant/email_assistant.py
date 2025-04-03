@@ -1,4 +1,6 @@
 from typing import TypedDict, Literal, Optional, Union
+import yaml
+from pathlib import Path
 
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
@@ -6,11 +8,9 @@ from langgraph.prebuilt import create_react_agent
  
 from langgraph.types import interrupt 
   
-from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt, agent_system_prompt_memory, prompt_instructions
-from email_assistant.schemas import State, RouterSchema, profile, HumanInterruptConfig, ActionRequest, HumanInterrupt
+from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt, prompt_instructions
+from email_assistant.schemas import State, RouterSchema, profile
 from email_assistant.utils import parse_email
-from email_assistant.configuration import Configuration
-from langmem import create_manage_memory_tool, create_search_memory_tool
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
@@ -47,24 +47,11 @@ def create_prompt(state):
         {"role": "system", "content": agent_system_prompt.format(instructions=prompt_instructions["agent_instructions"], **profile)}
     ] + state['messages']
 
-# Agent tools default
+# Baseline agent prompt
+prompt = agent_system_prompt
 tools = [write_email, schedule_meeting, check_calendar_availability]
 
-# Agent prompt default
-prompt = agent_system_prompt
-
-# Append to our tools based on configuration 
-config = Configuration()
-if config.use_memory: # TODO: Is this correct?
-    # Create semantic memory tools
-    manage_memory_tool = create_manage_memory_tool(namespace=("email_assistant", "{langgraph_user_id}", "collection"))
-    search_memory_tool = create_search_memory_tool(namespace=("email_assistant", "{langgraph_user_id}", "collection"))
-    # Add semantic memory tools
-    tools.extend([manage_memory_tool, search_memory_tool])
-    # Update prompt
-    prompt = agent_system_prompt_memory
-
-# Create agent
+# Create response agent
 agent = create_react_agent(
     llm,
     tools=tools,
