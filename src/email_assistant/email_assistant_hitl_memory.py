@@ -61,7 +61,6 @@ tools = [
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Initialize the LLM
-llm = init_chat_model("anthropic:claude-3-5-sonnet-latest")
 llm = init_chat_model("openai:o3-mini")
 
 # Router LLM 

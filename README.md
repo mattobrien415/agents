@@ -2,7 +2,7 @@
 
 AI assistants promise to make work easier. But we need effective ways to teach them our preferences and benchmark their performance. In this workshop, we'll build a self-improving email assistant that can intelligently manage your e-mail inbox. It brings together a few components of the LangGraph ecosystem: LangGraph for agent orchestration, Agent Inbox for human-in-the-loop, LangMem for memory, and LangSmith for evaluation.
 
-< add map >
+![interrupt_conf_high_level](https://github.com/user-attachments/assets/37c4376b-519b-4f53-9525-e924fa067cfd)
 
 ## Environment Setup 
 
@@ -54,6 +54,8 @@ There are [a few approaches to building an email assistant](https://langchain-ai
 
 ### Run E-mail Assistants 
 
+TODO: Add notebooks
+
 Install uv package manager and start LangGraph Platform server locally:
 ```shell
 # Install uv package manager
@@ -69,7 +71,7 @@ Here we can see the two assistants easily and test them. You will see in the `la
     },
 ```
 
-![Screenshot 2025-04-01 at 3 38 24 PM](https://github.com/user-attachments/assets/f93aa02e-5497-440e-9040-eb149701226b)
+![Screenshot 2025-04-04 at 4 06 18 PM](https://github.com/user-attachments/assets/72f21b12-c708-4fca-a9c6-8fc3faa2ef82)
 
 In studio, you can test both assistants with some email inputs directly to see what the assistants will do:
 ```shell
@@ -104,6 +106,8 @@ In studio, you can test both assistants with some email inputs directly to see w
 The evaluation framework in the `eval` folder compares the performance of both assistant implementations on two key aspects:
 
 1. **Dataset**: A collection of sample emails with ground truth classifications and responses is defined in `email_dataset.py`
+
+TODO: Improve datasets
 
 2. **Email Triage Evaluation** (`evaluate_triage.py`):
    - Uses LangSmith to run and track evaluations
@@ -170,6 +174,8 @@ You can also find an example dataset with previous evaluation results [here](htt
 
 ## Human-in-the-loop 
 
+TODO: Add notebooks
+
 ### Adding HITL to the Workflow 
 
 What if we want the ability to review and correct the assistant's decisions? We can add a human-in-the-loop (HITL) to the workflow. For this, we will use [Agent Inbox](https://github.com/langchain-ai/agent-inbox) to review and correct the assistant's decisions. To enable human-in-the-loop capabilities, we need to set up a connection between our email assistant and Agent Inbox. We have a graph that is HITL-enabled, so we just need to modify the `langgraph.json` file to point to the HITL-enabled graph.
@@ -230,7 +236,7 @@ When reviewing a NOTIFY classification in Agent Inbox, you have several options:
 
 These options let you confirm or correct the assistant's triage decisions over time.
 
-![Triage review interface](https://github.com/user-attachments/assets/160c357e-f4a8-4626-b74c-fef17b85127b)
+![Screenshot 2025-04-04 at 3 56 56 PM](https://github.com/user-attachments/assets/718bd6be-410c-4bf7-b59c-0e80b11ff782)
 
 #### 4. Response Review Options
 
@@ -241,7 +247,7 @@ When the assistant drafts an email response (for RESPOND classifications), you c
 * **Provide Feedback**: Offer guidance on how to improve similar responses
 * **Dismiss**: Reject the response entirely
 
-< Image >
+![Screenshot 2025-04-04 at 3 55 57 PM](https://github.com/user-attachments/assets/8a7f4ea1-905a-41de-a5e1-c0c665b0703f)
 
 #### 5. Integration with Workflow
 
@@ -256,6 +262,8 @@ The entire process integrates seamlessly with the workflow:
 This human-in-the-loop approach gives you oversight while still letting the assistant handle routine tasks, creating an effective collaboration.
 
 ## Memory & Learning Through Feedback
+
+TODO: Add notebooks
 
 Our email assistant becomes even more powerful when we add memory capabilities, allowing it to learn from user feedback and adapt to preferences over time.
 
@@ -351,7 +359,15 @@ To use the memory-enabled version, you can reference the `langgraph.json` file:
 
 This graph uses feedback from HITL (Agent Inbox) to update the memory. 
 
+Over time, you can see memories accumulate in the `Memory` store viewing in LangGraph Studio.
+
+![Screenshot 2025-04-04 at 4 08 03 PM](https://github.com/user-attachments/assets/2f8adbc5-9719-46df-a77d-d52c71c015dc)
+
 ## Deployment 
+
+We've buit up to a system that can learn our preferences over time:
+
+![iterrupt_conf_assistant](https://github.com/user-attachments/assets/b7ebe213-f214-4bdb-bb21-7c41edf01206)
 
 The graph already can be run with LangGraph Platform locally using the `langgraph dev` command. 
 

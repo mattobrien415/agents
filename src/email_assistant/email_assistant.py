@@ -13,7 +13,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 
 # Initialize the LLM
-llm = init_chat_model("anthropic:claude-3-5-sonnet-latest")
+llm = init_chat_model("openai:o3-mini")
 
 # We'll use structured output to generate classification results
 llm_router = llm.with_structured_output(RouterSchema) 
