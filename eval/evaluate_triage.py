@@ -9,9 +9,12 @@ from openevals.llm import create_llm_as_judge
 from eval.prompt import TRIAGE_CLASSIFICATION_PROMPT
 from eval.email_dataset import examples_triage
 
-from email_assistant.email_assistant import email_assistant
-from email_assistant.email_assistant_react import email_assistant_react
-from email_assistant.utils import format_messages
+from src.email_assistant.email_assistant import email_assistant
+
+# Fixed import to use the renamed variable
+from src.email_assistant.email_assistant_react import email_assistant as email_assistant_react
+
+from src.email_assistant.utils import format_messages
 
 # Client 
 client = Client()
@@ -41,8 +44,16 @@ def target_email_assistant(inputs: dict) -> dict:
     Returns:
         A formatted dictionary with the assistant's response messages
     """
-    response = email_assistant.invoke({"email_input": inputs["email_input"]})
-    return format_messages(response['messages'])
+    try:
+        response = email_assistant.invoke({"email_input": inputs["email_input"]})
+        if "classification_decision" in response:
+            return {"classification_decision": response['classification_decision']}
+        else:
+            print("No classification_decision in response from workflow agent")
+            return {"classification_decision": "unknown"}
+    except Exception as e:
+        print(f"Error in workflow agent: {e}")
+        return {"classification_decision": "unknown"}
 
 def target_email_assistant_react(inputs: dict) -> dict:
     """Process an email through the ReAct-based email assistant.
@@ -53,37 +64,34 @@ def target_email_assistant_react(inputs: dict) -> dict:
     Returns:
         A formatted dictionary with the assistant's response messages
     """
-    messages = [{"role": "user", "content": str(inputs["email_input"])}]
-    response = email_assistant_react.invoke({"messages": messages})
-    return format_messages(response['messages'])
+    try:
+        # Format a better prompt for the react agent
+        email_content = inputs["email_input"]
+        formatted_content = f"""
+From: {email_content.get('author', 'Unknown')}
+To: {email_content.get('to', 'Unknown')}
+Subject: {email_content.get('subject', 'No Subject')}
+
+{email_content.get('email_thread', '')}
+"""
+        messages = [{"role": "user", "content": f"Please triage this email: {formatted_content}"}]
+        
+        response = email_assistant_react.invoke({"messages": messages})
+        if "classification_decision" in response:
+            return {"classification_decision": response['classification_decision']}
+        else:
+            print("No classification_decision in response from react agent")
+            return {"classification_decision": "unknown"}
+    except Exception as e:
+        print(f"Error in react agent: {e}")
+        return {"classification_decision": "unknown"}
 
 ## Evaluator 
 feedback_key = "classification" # Key saved to langsmith
 
-def classification_evaluator(inputs: dict, outputs: dict, reference_outputs: dict) -> dict:
-    """Evaluate the assistant's email classification against reference outputs.
-    
-    This evaluator uses LLM-as-judge to compare the model's classification 
-    with the reference classification. It evaluates:
-    - Whether the assistant correctly classified the email
-    - The quality of the assistant's reasoning
-    
-    Args:
-        inputs: The original email input from the dataset
-        outputs: The assistant's response from the target function
-        reference_outputs: The ground truth classification from the dataset
-        
-    Returns:
-        An evaluation result with feedback on the assistant's performance
-    """
-
-    evaluator = create_llm_as_judge(
-        prompt=TRIAGE_CLASSIFICATION_PROMPT,
-        feedback_key=feedback_key, 
-        continuous=True, # Set 0-1 scale by default
-        model="openai:o3-mini",
-    )
-    return evaluator(inputs=inputs, outputs=outputs, reference_outputs=reference_outputs)
+def classification_evaluator(outputs: dict, reference_outputs: dict) -> bool:
+    """Check if the answer exactly matches the expected answer."""
+    return outputs["classification_decision"].lower() == reference_outputs["classification"].lower()
 
 ## Run evaluation
 experiment_results_react = client.evaluate(
@@ -122,8 +130,8 @@ df_react = experiment_results_react.to_pandas()
 df_workflow = experiment_results_workflow.to_pandas()
 
 # Calculate mean scores (values are on a 0-1 scale)
-react_score = df_react[f'feedback.{feedback_key}'].mean()
-workflow_score = df_workflow[f'feedback.{feedback_key}'].mean()
+react_score = df_react[f'feedback.classification_evaluator'].mean() if f'feedback.classification_evaluator' in df_react.columns else 0.0
+workflow_score = df_workflow[f'feedback.classification_evaluator'].mean() if f'feedback.classification_evaluator' in df_workflow.columns else 0.0
 
 # Create a bar plot comparing the two models
 plt.figure(figsize=(10, 6))

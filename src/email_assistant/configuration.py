@@ -9,8 +9,7 @@ from langchain_core.runnables import RunnableConfig
 @dataclass(kw_only=True)
 class Configuration:
     """Main configuration class."""
-    use_hitl: bool = False
-    use_memory: bool = False
+    # llm = 
 
     @classmethod
     def from_runnable_config(

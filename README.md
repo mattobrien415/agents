@@ -1,10 +1,8 @@
 # Interrupt Workshop 
 
-Email management is time-consuming, requiring constant triage and response effort. While AI assistants promise to make this work easier, we need effective ways to benchmark their performance and teach them our preferences over time. In this workshop, we'll build a sophisticated, self-improving email assistant that can intelligently manage your inbox.
+AI assistants promise to make work easier. But we need effective ways to teach them our preferences and benchmark their performance. In this workshop, we'll build a self-improving email assistant that can intelligently manage your e-mail inbox. It brings together a few components of the LangGraph ecosystem: LangGraph for agent orchestration, Agent Inbox for human-in-the-loop, LangMem for memory, and LangSmith for evaluation.
 
-Our email assistant analyzes incoming messages to determine whether they should be responded to, noted, or safely ignored. It can draft responses, schedule meetings, and even ask clarifying questions when needed. What makes this assistant special is its ability to improve over time by learning from human feedback and storing user preferences in semantic memory.
-
-The implementation will evolve through multiple stages, from a basic agent to a memory-enabled workflow with human-in-the-loop capabilities. This progression showcases key features of the LangGraph, LangChain, and LangSmith ecosystem. You'll learn about building different types of agents and workflows, evaluating assistant performance, implementing human-in-the-loop feedback, adding semantic memory for personalization, and deploying solutions using LangGraph Platform.
+< add map >
 
 ## Environment Setup 
 
@@ -41,21 +39,18 @@ We want a few core functions in a baseline e-mail assistant:
 
 ### Tool calling agent vs Workflow 
 
-There are two main approaches to building an email assistant:
+There are [a few approaches to building an email assistant](https://langchain-ai.github.io/langgraph/tutorials/workflows/), including:
 
 1. **Tool-calling ReAct Agent** (`email_assistant_react.py`):
-   - A single agent handles all tasks - both triage and response
-   - Uses a ReAct (Reasoning and Acting) pattern to decide what to do next
-   - More flexible but potentially less structured
+   - A single agent handles *all* tasks - both triage and response
    - Has a dedicated triage tool to categorize emails
+   - Has tools for to e-mail drafting, calendar scheduling, and calendar search
    - All decision-making happens within one LLM component
 
-2. **Workflow** (`email_assistant.py`):
-   - Uses a structured graph with specialized nodes for different tasks
-   - Clear separation between triage and response logic
-   - More explicit control flow with defined transitions
-   - Potentially more maintainable and easier to debug
-   - Can use different prompt templates and models for different steps
+2. **Agentic Workflow** (`email_assistant.py`):
+   - Includes a clear separation of concerns between triage and response logic
+   - Has router node to decide what to do with an email
+   - E-mail response is handled by a separate agent with tools for e-mail drafting, calendar scheduling, and calendar search
 
 ### Run E-mail Assistants 
 
@@ -70,13 +65,13 @@ Here we can see the two assistants easily and test them. You will see in the `la
 ```shell
   "graphs": {
       "email_assistant": "./src/email_assistant/email_assistant.py:email_assistant",
-      "email_assistant_react": "./src/email_assistant/email_assistant_react.py:email_assistant_react"
+      "email_assistant_react": "./src/email_assistant/email_assistant_react.py:email_assistant"
     },
 ```
 
 ![Screenshot 2025-04-01 at 3 38 24 PM](https://github.com/user-attachments/assets/f93aa02e-5497-440e-9040-eb149701226b)
 
-In studio, you can test some email inputs directly to see what the assistant will do:
+In studio, you can test both assistants with some email inputs directly to see what the assistants will do:
 ```shell
 {"author": "Alice Smith <alice.smith@company.com>",
   "to": "John Doe <john.doe@company.com>",
@@ -114,14 +109,13 @@ The evaluation framework in the `eval` folder compares the performance of both a
    - Uses LangSmith to run and track evaluations
    - Creates a dataset of test emails if it doesn't exist
    - Runs both assistant implementations against the dataset
-   - Uses an LLM-as-judge approach with the `TRIAGE_CLASSIFICATION_PROMPT` from `prompt.py`
-   - Evaluates whether each assistant correctly classified emails
-   - Scores assistants on a 0-1 scale
+   - Uses direct string matching to evaluate if classifications match expected values
+   - Scores assistants on a 0-1 scale based on exact matches
 
 3. **Email Response Evaluation** (`evaluate_response.py`):
    - Uses the same LangSmith evaluation framework
    - Creates a response quality dataset if it doesn't exist
-   - Uses the `RESPONSE_QUALITY_PROMPT` to evaluate response quality
+   - Uses an LLM-as-judge approach with the `RESPONSE_QUALITY_PROMPT` 
    - Assesses how well each assistant crafts appropriate responses
    - Scores response quality on a 0-1 scale
 
@@ -140,11 +134,6 @@ To evaluate the performance of both email assistant implementations, follow thes
    export LANGCHAIN_API_KEY=your_langsmith_api_key
    ```
 
-2. Set up your OpenAI API key (required for the evaluator):
-   ```bash
-   export OPENAI_API_KEY=your_openai_api_key
-   ```
-
 #### Running the Triage Evaluation
 Execute the triage evaluation script:
 ```bash
@@ -153,7 +142,7 @@ python -m eval.evaluate_triage
 
 This script will:
 1. Create a dataset in LangSmith with test emails defined in `eval/email_dataset.py` (if it doesn't exist)
-2. Run both the workflow-based and ReAct-based email assistants against this dataset
+2. Run both the agentic workflow and ReAct email assistants against this dataset
 3. Evaluate each assistant's performance using an LLM-as-judge approach
 4. Generate a visual comparison of the results and save it to `eval/results/`
 5. Print the performance scores of both assistants in the terminal
@@ -167,7 +156,7 @@ python -m eval.evaluate_response
 This script follows the same approach but focuses on evaluating the quality and appropriateness of email responses.
 
 #### Understanding the Results
-The triage evaluation measures how well each assistant correctly classifies emails as "respond", "notify", or "ignore". The response evaluation measures the quality and appropriateness of the responses generated. Both use a 0-1 scale, where higher scores indicate better performance.
+The triage evaluation measures how well each assistant correctly classifies emails as "respond", "notify", or "ignore" using direct string matching with the expected classifications. The response evaluation uses an LLM-as-judge approach to measure the quality and appropriateness of the responses generated. Both use a 0-1 scale, where higher scores indicate better performance.
 
 #### Viewing Results in LangSmith
 After running the evaluations, you can view detailed results in the LangSmith dashboard:
@@ -183,315 +172,184 @@ You can also find an example dataset with previous evaluation results [here](htt
 
 ### Adding HITL to the Workflow 
 
-Modify the `langgraph.json` file to point to the new graph that includes HITL: 
+What if we want the ability to review and correct the assistant's decisions? We can add a human-in-the-loop (HITL) to the workflow. For this, we will use [Agent Inbox](https://github.com/langchain-ai/agent-inbox) to review and correct the assistant's decisions. To enable human-in-the-loop capabilities, we need to set up a connection between our email assistant and Agent Inbox. We have a graph that is HITL-enabled, so we just need to modify the `langgraph.json` file to point to the HITL-enabled graph.
+
+1. You'll see that the `langgraph.json` file has the HITL-enabled graph: 
 ```shell
   "graphs": {
-      "email_assistant": "./src/email_assistant/email_assistant.py:email_assistant_hitl",
+      "email_assistant_hitl": "./src/email_assistant/email_assistant_hitl.py:email_assistant",
     },
 ```
 
-This allows us to interrupt the workflow after the triage decision and review it. For this, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox). First, start the server:
+2. Start the LangGraph server:
 ```shell
 $ langgraph dev 
 ```
 
-Then, open: 
+3. Open Agent Inbox and connect it to your local server:
 ```
 https://dev.agentinbox.ai/
 ```
 
-Select `add inbox` provide it:
-* Graph name: the name from the `langgraph.json` file (`email_assistant`)
-* Graph URL: `http://127.0.0.1:2024/`
+4. Add the new inbox:
+   * Graph name: the name from the `langgraph.json` file (`email_assistant_hitl`)
+   * Graph URL: `http://127.0.0.1:2024/`
 
-Pass any of the the above inputs to your assistant in Studio, and you will see the thread in Agent Inbox. You can review the triage decision and respond to the email. 
+Now you can send email inputs through Studio and interact with them through Agent Inbox.
 
-### Agent Inbox Details
+### Email Assistant HITL Workflow
 
-The HITL implementation works by pausing the workflow at the triage step to get user input on the decision. Here's how it works:
+The HITL-enabled email assistant creates a more interactive experience by involving you at key decision points. Here's how it works:
 
-#### 1. Creating the Request
+#### 1. Email Triage Process
 
-```python
-request = {
-    "action_request": {
-        "action": "Review Triage",
-        "args": {}
-    },
-    "config": {
-        "allow_ignore": True,  
-        "allow_respond": True, 
-        "allow_edit": False, 
-        "allow_accept": True, 
-    },
-    "description": email_markdown,
-}
+When an email arrives, the assistant first analyzes and categorizes it:
+
+* **RESPOND Classification**: The assistant determines the email needs a response. It automatically proceeds to draft a response, which you can review in Agent Inbox before it's sent.
+
+* **IGNORE Classification**: The assistant determines the email can be safely ignored. No human intervention is required, and the workflow ends.
+
+* **NOTIFY Classification**: The assistant determines the email contains important information but doesn't require a response. This classification is sent to Agent Inbox for your review.
+
+#### 2. Agent Inbox Interface
+
+For emails that require human review, you'll see them appear in Agent Inbox with `Required Action` notification:
+* The full email content formatted clearly
+* The assistant's classification decision
+* Action buttons based on the context
+
+![Agent Inbox showing email threads](https://github.com/user-attachments/assets/e45e063b-6e54-49b7-8fef-a0280b52e683)
+
+#### 3. Triage Review Options
+
+When reviewing a NOTIFY classification in Agent Inbox, you have several options:
+
+* **Accept**: You agree with the classification, and the workflow ends
+* **Provide Feedback**: You can type a message explaining how you would have classified the email
+* **Dismiss**: You can dismiss the notification if it's not important
+
+These options let you confirm or correct the assistant's triage decisions over time.
+
+![Triage review interface](https://github.com/user-attachments/assets/160c357e-f4a8-4626-b74c-fef17b85127b)
+
+#### 4. Response Review Options
+
+When the assistant drafts an email response (for RESPOND classifications), you can:
+
+* **Edit**: Modify the content of the response directly
+* **Accept**: Send the response as drafted
+* **Provide Feedback**: Offer guidance on how to improve similar responses
+* **Dismiss**: Reject the response entirely
+
+< Image >
+
+#### 5. Integration with Workflow
+
+The entire process integrates seamlessly with the workflow:
+
+1. The assistant classifies incoming emails
+2. Certain decisions (NOTIFY classifications and response drafts) are routed to Agent Inbox
+3. The workflow pauses until you provide input
+4. Your decision determines the next step in the workflow
+5. Your feedback is captured for potential improvement
+
+This human-in-the-loop approach gives you oversight while still letting the assistant handle routine tasks, creating an effective collaboration.
+
+## Memory & Learning Through Feedback
+
+Our email assistant becomes even more powerful when we add memory capabilities, allowing it to learn from user feedback and adapt to preferences over time.
+
+### Introducing Semantic Memory
+
+The memory-enabled assistant (`email_assistant_hitl_memory.py`) uses [LangMem](https://langchain-ai.github.io/langmem/) to create four specialized memory types:
+
+1. **Triage Preferences Memory**: Stores rules about how emails should be classified
+2. **Response Preferences Memory**: Captures style and content preferences for email responses
+3. **Calendar Preferences Memory**: Remembers scheduling preferences for meetings
+4. **Background Memory**: Accumulates factual information about colleagues, projects, and context
+
+These memory types work seamlessly with [LangGraph Store](https://langchain-ai.github.io/langgraph/concepts/memory/#long-term-memory), which is a simple database that is built into our local deployment that we get when we run `langGraph dev` locally or use the LangGraph Platform hosted service. The Store persists across each interaction (or thread) with the assistant, allowing the accumulation of memories over time. 
+
+### Memory Architecture
+
+Each memory type is updated through specialized components, which can take in messages and update the memory. 
+
+```
+triage_feedback_memory_manager = create_memory_store_manager(
+    llm,
+    namespace=("email_assistant", "triage_preferences"),
+    instructions="Extract user email triage preferences into a single set of rules"
+)
 ```
 
-This creates a package of information that will be displayed in Agent Inbox:
-- `action_request`: Describes what type of action this is ("Review Triage") and any initial values
-- `config`: Defines what buttons will appear for the user in Agent Inbox:
-  - `allow_ignore`: Shows a "Dismiss" or "Ignore" button
-  - `allow_respond`: Shows a text input field for free-form responses
-  - `allow_edit`: Shows an edit interface (disabled for triage review)
-  - `allow_accept`: Shows an "Accept" button to approve the triage decision
-- `description`: Contains the formatted email content and triage decision that will be displayed
+The system also includes specialized tools to search these memories, which the agent can use to fetch memories when needed:
 
-#### 2. Sending to Agent Inbox
-
-```python
-response = interrupt([request])[0]
+```
+response_preferences_tool = create_search_memory_tool(
+    namespace=("email_assistant", "response_preferences")
+)
 ```
 
-This line does several important things:
-- It pauses the current execution of the workflow
-- It sends the request to Agent Inbox
-- The request appears as a new item in the user's Agent Inbox interface
-- The workflow waits until the user interacts with the item
-- When the user takes an action (ignores, responds, or accepts), that response is returned
+### Learning From Feedback
 
-#### 3. What the User Sees
+The assistant updates its memory in several key scenarios:
 
-The agent inbox has each thread from Studio:
+#### 1. Triage Classification Feedback
 
-![Screenshot 2025-04-02 at 4 37 06 PM](https://github.com/user-attachments/assets/e45e063b-6e54-49b7-8fef-a0280b52e683)
+When the assistant classifies an email as "notify" and sends it to Agent Inbox, you have options:
 
-The user will see a new item in their Agent Inbox with:
-- The email content formatted nicely (from email_markdown)
-- The triage decision (e.g., "📧 Classification: RESPOND - This email requires a response")
-- A set of action buttons based on the config settings
-- A text input field if allow_respond is True
+* **Accept**: The classification stands without memory updates
+* **Provide Feedback**: Your feedback (e.g., "This should be classified as 'respond'") is processed by the `triage_feedback_memory_manager`, which extracts rules and updates the triage preferences memory
 
-![Screenshot 2025-04-02 at 4 14 31 PM](https://github.com/user-attachments/assets/160c357e-f4a8-4626-b74c-fef17b85127b)
+This gradually improves the assistant's understanding of which emails should fall into each category.
 
-#### 4. Handling User Responses
+#### 2. Email Response Editing
 
-The workflow handles different user responses:
+When reviewing a draft email response in Agent Inbox:
 
-```python
-# Accept the decision to respond  
-if response["type"] == "accept":
-    # Go to the response agent
-    goto = "response_agent"
-    # Add the email to the messages
-    messages.append({"role": "user",
-                     "content": f"Respond to the email {state['email_input']}"
-                     })
-# Ignore the email 
-elif response["type"] == "ignore":
-    goto = END
-    # Add the email to the messages
-    messages.append({"role": "user",
-                     "content": "User feedback: Ignore email"
-                     })
-elif response["type"] == "response":
-    # Add user_input to memory
-    user_input = response["args"]
-    messages.append({"role": "user",
-                     "content": f"User feedback: {user_input}"
-                     })
-    goto = END
-```
+* **Edit Mode**: When you edit the content of a response, the assistant doesn't just use your edits for that specific email - it also updates its `response_preferences_memory` with insights from your changes
+* **Feedback Mode**: Any comments you provide about the response style, tone, or content are stored as response guidelines
 
-This mechanism creates a clean user experience where:
-1. The assistant classifies an email (respond, ignore, or notify)
-2. The user reviews this decision in Agent Inbox with appropriate options
-3. The workflow waits for their input
-4. Once they respond, the workflow continues executing with their response
-5. The user's feedback is captured in the messages for potential future use
+For example, if you consistently edit greetings from "Hello" to "Hi" or add more technical details to responses, the assistant learns these preferences over time.
 
-In our implementation, we've customized the UI options for different triage decisions. For example, when an email is classified as "respond", we don't show the "ignore" button, encouraging the user to either accept the decision or provide feedback.
+#### 3. Meeting Scheduling Feedback
 
-## Memory & Advanced HITL
+When the assistant proposes scheduling a meeting:
 
-We've enhanced our email assistant with semantic memory and improved human-in-the-loop capabilities, creating a more powerful and interactive assistant.
+* **Edit Meeting Details**: If you change meeting duration, preferred days, or other parameters, these updates are stored in `calendar_preferences_memory`  
+* **Provide Scheduling Guidelines**: Any direct feedback about scheduling preferences is processed and stored
 
-### Architecture Evolution
+This might include learning that you prefer morning meetings, specific meeting durations, or avoiding certain days.
 
-Our email assistant has evolved through three main versions:
+#### 4. Background Information Accumulation
 
-1. **Baseline ReAct Agent** (`email_assistant_react.py`):
-   - A single agent that handles both triage and response
-   - Uses a ReAct pattern with a dedicated triage tool
-   - Simple but less structured approach
+The assistant continuously builds its knowledge base about your work context:
 
-2. **Graph-based Workflow** (`email_assistant.py`):
-   - Structured graph with separate triage and response nodes
-   - Clear separation of concerns with different prompts for each step
-   - Available in two variants:
-     - `email_assistant`: Standard version without HITL
-     - `email_assistant_hitl`: With human review of triage decisions
+* Every message provides potential background information about projects, team members, and organizational context
+* This information is automatically extracted and stored in background_memory
+* Future interactions then have access to this growing knowledge base
 
-3. **Memory-Enabled HITL Workflow** (`email_assistant_hitl_memory.py`):
-   - Enhanced with semantic memory capabilities
-   - Sophisticated HITL integration that allows:
-     - Review of triage decisions
-     - Review and editing of tool calls (email drafts, meeting schedules, questions)
-     - Automatic execution of search memory tools without interruption
-   - Provides rich context in the Agent Inbox display
+For example, if an email mentions a project deadline or a team member's role, this information becomes available for future reference.
 
-### Memory Features
+### Memory Benefits
 
-The memory-enabled assistant uses the following tools to enhance its capabilities:
+This semantic memory approach offers several key advantages:
 
-1. **Memory Search Tools**:
-   - `search_memory(namespace=("email_assistant", "response_preferences"))`: Find user's response preferences
-   - `search_memory(namespace=("email_assistant", "cal_preferences"))`: Find calendar preferences
-   - `search_memory(namespace=("email_assistant", "background"))`: Search for background information
-
-2. **Question Tool**: Allows the assistant to ask follow-up questions to the user when needed
-
-3. **Standard Tools**:
-   - `write_email`: Draft and send emails
-   - `schedule_meeting`: Schedule calendar meetings
-   - `check_calendar_availability`: Check available time slots
-
-### Advanced HITL Integration
-
-Our advanced HITL implementation improves upon the basic version:
-
-1. **Selective HITL**:
-   - Not all tool calls trigger human review
-   - The system interrupts for specific tools (`write_email`, `schedule_meeting`, `Question`)
-   - Memory search tools execute automatically without interruption, improving efficiency
-
-2. **Rich Context Display**:
-   - All tool calls in Agent Inbox show the original email alongside the proposed action
-   - Question format is specifically formatted for clarity
-   - Email drafts display both the original email and the proposed response
-
-3. **Tool-Specific Configuration**:
-   - Different tools have custom UI configurations in Agent Inbox
-   - For example, Question tools don't allow editing but do allow acceptance or feedback
-
-### How It Works
-
-The system works by combining several key components:
-
-1. **Unified State Structure**:
-   - Uses a consistent State schema throughout the graph:
-     ```python
-     class State(MessagesState):
-        # This state class has the messages key build in
-        # Plus additional fields:
-        documents: list[str]
-        email_input: dict  # Original email that's accessible throughout the graph
-        classification_decision: Literal["ignore", "respond", "notify"]
-     ```
-   - Original email input is available to all nodes
-   - When displaying tool calls, the system parses the original email and formats it alongside the tool call
-
-2. **Tool Call Processing**:
-   - The `interrupt_handler` function decides which tool calls require human intervention:
-     ```python
-     # List of tools that require human intervention
-     hitl_tools = ["write_email", "schedule_meeting", "Question"]
-     
-     # If tool is not in our HITL list, execute it directly without interruption
-     if tool_call["name"] not in hitl_tools:
-         # Execute search_memory and other tools without interruption
-         tool = tools_by_name[tool_call["name"]]
-         observation = tool.invoke(tool_call["args"])
-         result.append(ToolMessage(content=observation, tool_call_id=tool_call["id"]))
-         continue
-     ```
-   - For HITL-enabled tools, the system formats the display with original email context:
-     ```python
-     # Get original email from email_input in state
-     original_email_markdown = ""
-     if "email_input" in state:
-         email_input = state["email_input"]
-         author, to, subject, email_thread = parse_email(email_input)
-         original_email_markdown = format_email_markdown(subject, author, to, email_thread)
-     
-     # Format tool call for display and prepend the original email
-     tool_display = format_for_display(state, tool_call)
-     description = original_email_markdown + tool_display
-     ```
-   - For non-HITL tools, they execute automatically and return results
-
-3. **Rich Email Context and Formatting**:
-   - Tools are formatted with specific templates for clarity:
-     ```python
-     # Format email for display
-     def format_email_markdown(subject, author, to, email_thread):
-         return f"""# Original Email
-
-     **Subject**: {subject}
-     **From**: {author}
-     **To**: {to}
-
-     {email_thread}
-
-     ---
-     """
-     
-     # Format Question tool for display
-     elif tool_call["name"] == "Question":
-         # Special formatting for questions to make them clear
-         display += f"""# Question for User
-
-     {tool_call["args"].get("content")}
-     """
-     ```
-   - Each interaction in Agent Inbox shows both the original email and the current tool call
-   - This formatting ensures users always have the necessary context for decision-making
+1. **Personalization**: The assistant adapts to your specific preferences rather than using generic rules
+2. **Efficiency**: You don't need to repeat the same feedback - the assistant learns from each interaction
+3. **Context Awareness**: Background memory helps the assistant understand references to projects and people
+4. **Continuous Improvement**: The system gets more accurate over time through regular use and feedback
 
 ### Running the Memory-Enabled Assistant
 
-Modify the `langgraph.json` file to point to the new graph:
+To use the memory-enabled version, you can reference the `langgraph.json` file:
 ```json
 "graphs": {
     "email_assistant": "./src/email_assistant/email_assistant_hitl_memory.py:email_assistant",
 },
 ```
 
-Run the server and connect to Agent Inbox as described in the HITL section above.
-
-### Example Agent Inbox Display
-
-With our enhanced formatting, the Agent Inbox now shows:
-
-1. **For Email Responses**:
-   ```
-   # Original Email
-   
-   **Subject**: Quick question about API documentation
-   **From**: Alice Smith <alice.smith@company.com>
-   **To**: John Doe <john.doe@company.com>
-   
-   Hi John, I was reviewing the API documentation for the new authentication service and noticed...
-   
-   ---
-   
-   # Email Draft
-   
-   **To**: Alice Smith <alice.smith@company.com>
-   **Subject**: RE: Quick question about API documentation
-   
-   Hi Alice,
-   
-   Thanks for bringing this to my attention...
-   ```
-
-2. **For Questions**:
-   ```
-   # Original Email
-   
-   **Subject**: Project timeline update needed
-   **From**: Bob Johnson <bob.johnson@company.com>
-   **To**: John Doe <john.doe@company.com>
-   
-   Hi John, can you provide an update on...
-   
-   ---
-   
-   # Question for User
-   
-   Do you want me to include the latest development metrics in the response?
-   ```
-
-This rich context helps users make better decisions when interacting with the assistant.
+This graph uses feedback from HITL (Agent Inbox) to update the memory. 
 
 ## Deployment 
 
@@ -503,12 +361,4 @@ TODO: Add remote deployment instructions.
 
 You can use any model support by `init_chat_model` shown [here](https://python.langchain.com/api_reference/langchain/chat_models/langchain.chat_models.base.init_chat_model.html).
 
-Simply modify the `llm` variable in the respective files:
-* `src/email_assistant/email_assistant_react.py` - Baseline ReAct agent
-* `src/email_assistant/email_assistant.py` - Graph-based workflow (with/without HITL)
-* `src/email_assistant/email_assistant_hitl_memory.py` - Memory-enabled HITL workflow
-* `eval/evaluate_triage.py` - Evaluation script
-
-You can also modify the assistant and evaluator prompts in:
-* `src/email_assistant/prompts.py` 
-* `src/eval/prompt.py`
+TODO: Add to configuration 

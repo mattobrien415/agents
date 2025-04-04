@@ -21,14 +21,19 @@ class StateInput(TypedDict):
 
 class State(MessagesState):
     # This state class has the messages key build in
-    # But, we can add additional keys to it
-    documents: list[str]
     email_input: dict
     classification_decision: Literal["ignore", "respond", "notify"]
 
-# TODO: Load into memory 
+# User profile information
 profile = {
-    "name": "John",
-    "full_name": "John Doe",
-    "user_profile_background": "Senior software engineer leading a team of 5 developers",
+    "name": "Lance",
+    "full_name": "Lance Johnson",
+    "user_profile_background": """
+Lance is a senior software engineer at LangChain specializing in AI/ML systems.
+He manages a team of 5 engineers working on the LangGraph project.
+His time is valuable and he prefers concise communications.
+    """,
+    "email": "lance@langchain.com",
+    "position": "Senior Software Engineer",
+    "team": "LangGraph Team"
 }
