@@ -4,8 +4,7 @@ from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
    
-from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt
-from email_assistant.prompts import default_background, default_triage_instructions
+from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt, default_background, default_triage_instructions, default_response_preferences, default_cal_preferences
 from email_assistant.schemas import State, RouterSchema, StateInput
 from email_assistant.utils import parse_email, format_email_markdown
 
@@ -39,29 +38,16 @@ def check_calendar_availability(day: str) -> str:
     # Placeholder response - in real app would check actual calendar
     return f"Available times on {day}: 9:00 AM, 2:00 PM, 4:00 PM"
 
-def create_prompt(state):
-    instructions = """
-When handling emails, follow these steps:
-1. Carefully analyze the email content and purpose
-2. For meeting requests, use check_calendar_availability to find open time slots
-3. Schedule meetings with the schedule_meeting tool when appropriate
-4. Draft response emails using the write_email tool
-5. Always use professional and concise language
-6. Maintain a friendly but efficient tone
-"""
-    return [
-        {"role": "system", "content": agent_system_prompt.format(instructions=instructions)}
-    ] + state['messages']
-
 # Baseline agent prompt
-prompt = create_prompt
 tools = [write_email, schedule_meeting, check_calendar_availability]
 
 # Create response agent
 agent = create_react_agent(
     llm,
     tools=tools,
-    prompt=prompt,
+    prompt= agent_system_prompt.format(background=default_background,
+                                       response_preferences=default_response_preferences, 
+                                       cal_preferences=default_cal_preferences),
 )
 
 def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]:

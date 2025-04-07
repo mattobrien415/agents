@@ -3,7 +3,7 @@ from typing import Literal
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
-from src.email_assistant.prompts import agent_system_prompt_react
+from src.email_assistant.prompts import agent_system_prompt_react, default_background, default_response_preferences, default_cal_preferences
 from src.email_assistant.schemas import State
 
 from langgraph.graph import StateGraph, START, END
@@ -48,21 +48,15 @@ llm_with_tools = llm.bind_tools(tools)
 # LLM call node
 def llm_call(state: State):
     """LLM decides whether to call a tool or not"""
-    instructions = """
-When handling emails, follow these steps:
-1. Carefully analyze the email content and purpose
-2. Triage emails using the triage_email tool to categorize as ignore, notify, or respond
-3. For meeting requests, use check_calendar_availability to find open time slots
-4. Schedule meetings with the schedule_meeting tool when appropriate
-5. Draft response emails using the write_email tool
-6. Always use professional and concise language
-"""
+
     return {
         "messages": [
             llm_with_tools.invoke(
                 [
                     {"role": "system", "content": agent_system_prompt_react.format(
-                        instructions=instructions
+                        background=default_background,
+                        response_preferences=default_response_preferences,
+                        cal_preferences=default_cal_preferences
                     )}
                 ]
                 + state["messages"]
