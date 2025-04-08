@@ -370,6 +370,7 @@ def interrupt_handler(state: State, store: BaseStore):
             tool = tools_by_name[tool_call["name"]]
             
             # Get edited args from Agent Inbox
+            # TODO: Talk to Brace. This is confusing. 
             edited_args = response["args"]["args"]
 
             # Save feedback in memory and update the write_email tool call with the edited content from Agent Inbox

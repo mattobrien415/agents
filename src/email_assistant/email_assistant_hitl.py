@@ -5,7 +5,6 @@ from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.store.base import BaseStore
 from langgraph.types import interrupt, Command
 
 from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl, default_background, default_triage_instructions, default_response_preferences, default_cal_preferences
@@ -188,7 +187,7 @@ def triage_interrupt_handler(state: State) -> Command[Literal["response_agent", 
 
     return Command(goto=goto, update=update)
 
-def llm_call(state: State, store: BaseStore):
+def llm_call(state: State):
     """LLM decides whether to call a tool or not"""
 
     return {
@@ -347,7 +346,7 @@ def should_continue(state: State) -> Literal["interrupt_handler", END]:
 # Build workflow
 agent_builder = StateGraph(State)
 
-# Add nodes - with store parameter
+# Add nodes
 agent_builder.add_node("llm_call", llm_call)
 agent_builder.add_node("interrupt_handler", interrupt_handler)
 
@@ -363,7 +362,7 @@ agent_builder.add_conditional_edges(
 )
 agent_builder.add_edge("interrupt_handler", "llm_call")
 
-# Compile the agent - nodes will receive store parameter automatically
+# Compile the agent
 response_agent = agent_builder.compile()
 
 # Build overall workflow

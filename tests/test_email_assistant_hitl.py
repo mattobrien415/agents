@@ -1,0 +1,117 @@
+import pytest
+import uuid
+from langsmith import testing as t
+from src.email_assistant.email_assistant_hitl import overall_workflow
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import Command
+
+
+@pytest.mark.langsmith
+def test_email_assistant_hitl_notify():
+    """Test that the HITL-enabled email assistant notification workflow runs successfully."""
+    
+    # Test email input (notify scenario)
+    email_input = {
+        "author": "System Admin <sysadmin@company.com>",
+        "to": "Development Team <dev@company.com>",
+        "subject": "Scheduled maintenance - database downtime",
+        "email_thread": """Hi team,
+
+This is a reminder that we'll be performing scheduled maintenance on the production database tonight from 2AM to 4AM EST. During this time, all database services will be unavailable.
+
+Please plan your work accordingly and ensure no critical deployments are scheduled during this window.
+
+Thanks,
+System Admin Team"""
+    }
+    
+    # Log inputs
+    t.log_inputs({"email_input": email_input})
+    
+    # Compile the graph
+    checkpointer = MemorySaver()
+    graph = overall_workflow.compile(checkpointer=checkpointer)
+    thread_id = uuid.uuid4()
+    thread_config = {"configurable": {"thread_id": thread_id}}
+    
+    # Run the graph initially
+    messages = []
+    for chunk in graph.stream({"email_input": email_input}, config=thread_config):
+        messages.append(chunk)
+    
+    # Provide feedback and resume the graph
+    resume_command = Command(resume=[{
+        "type": "response", 
+        "args": "Let's actually respond to this email with just a polite 'thank you!'"
+    }])
+    
+    for chunk in graph.stream(resume_command, config=thread_config):
+        messages.append(chunk)
+    
+    state = graph.get_state(thread_config)
+    all_messages_str = " === ".join(m.content for m in state.values['messages'])
+
+    # Log feedback response
+    t.log_outputs({"messages": state["messages"]})
+    
+    # Assert we got responses and registered the feedback
+    assert state.values["classification_decision"] is not None 
+    assert "Let's actually respond" in all_messages_str
+
+
+''' 
+@pytest.mark.langsmith
+def test_email_assistant_hitl_edit():
+    """Test that the HITL-enabled email assistant reponse workflow runs successfully."""
+    
+    # Test email input (respond scenario)
+    email_input = {
+    "author": "Alice Smith <alice.smith@company.com>",
+    "to": "John Doe <john.doe@company.com>",
+    "subject": "Quick question about API documentation",
+    "email_thread": """Hi John,
+
+I was reviewing the API documentation for the new authentication service and noticed a few endpoints seem to be missing from the specs. Could you help clarify if this was intentional or if we should update the docs?
+
+Specifically, I'm looking at:
+- /auth/refresh
+- /auth/validate
+
+Thanks!
+Alice""",}
+    
+    # Log inputs
+    t.log_inputs({"email_input": email_input})
+    
+    # Compile the graph
+    checkpointer = MemorySaver()
+    graph = overall_workflow.compile(checkpointer=checkpointer)
+    thread_id = uuid.uuid4()
+    thread_config = {"configurable": {"thread_id": thread_id}}
+    
+    # Run the graph initially
+    messages = []
+    for chunk in graph.stream({"email_input": email_input}, config=thread_config):
+        messages.append(chunk)
+    
+    # Edit the email and resume the graph
+    resume_command = Command(resume=[{
+        "type": "edit", 
+        "args": "thanks! i will fix it!'"
+    }])
+    
+    for chunk in graph.stream(resume_command, config=thread_config):
+        messages.append(chunk)
+    
+    state = graph.get_state(thread_config)
+    all_messages_str = " === ".join(m.content for m in state.values['messages'])
+
+    # Log feedback response
+    t.log_outputs({"messages": state["messages"]})
+    
+    # Assert we got responses and registered the edit
+    assert state.values["classification_decision"] is not None 
+    assert "thanks! i will fix it!" in all_messages_str
+'''
+
+    

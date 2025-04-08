@@ -397,17 +397,43 @@ Over time, you can see memories accumulate in the `Memory` store viewing in Lang
 
 The project includes comprehensive testing capabilities that leverage pytest and LangSmith for evaluation and tracking. Tests verify the functionality of different email assistant implementations, including classification, response generation, and memory features.
 
-### Test Structure
+### Evaluation Framework
 
-- **Basic Email Classification** (`run_test.py`): Tests the core email triage functionality across different assistant implementations, ensuring emails are correctly classified as "respond", "ignore", or "notify".
+The evaluation framework in the `eval` folder compares the performance of both assistant implementations on two key aspects:
 
-- **Memory Integration** (`test_email_memory.py`): Tests the assistant's ability to store and utilize email interaction preferences and context.
+1. **Dataset**: A collection of sample emails with ground truth classifications and responses is defined in `email_dataset.py`
 
-- **Calendar Features** (`test_calendar_memory.py`): Tests calendar and meeting scheduling functionality with memory persistence.
+2. **Email Triage Evaluation** (`evaluate_triage.py`):
+   - Uses LangSmith to run and track evaluations
+   - Creates a dataset of test emails if it doesn't exist
+   - Runs both assistant implementations against the dataset
+   - Uses direct string matching to evaluate if classifications match expected values
+   - Scores assistants on a 0-1 scale based on exact matches
+
+3. **Email Response Evaluation** (`evaluate_response.py`):
+   - Uses the same LangSmith evaluation framework
+   - Creates a response quality dataset if it doesn't exist
+   - Uses an LLM-as-judge approach with the `RESPONSE_QUALITY_PROMPT` 
+   - Assesses how well each assistant crafts appropriate responses
+   - Scores response quality on a 0-1 scale
+
+4. **Visualization**:
+   - Each evaluation generates a comparative bar chart showing performance of both approaches
+   - Saves results to `eval/results/` with timestamps
+   - Provides clear metrics on which assistant performed better
+
+### Pytest Tests
+
+The `tests` directory contains pytest tests with LangSmith integration for all four email assistant implementations:
+
+- **React Agent Tests** (`test_email_assistant_react.py`): Tests the ReAct agent-based email assistant
+- **Workflow Tests** (`test_email_assistant_workflow.py`): Tests the workflow-based email assistant
+- **HITL Tests** (`test_email_assistant_hitl.py`): Tests the human-in-the-loop email assistant with feedback
+- **Memory Tests** (`test_email_assistant_memory.py`): Tests the memory-enabled HITL email assistant
 
 ### Running Tests
 
-You can run the test suite using the provided `run_tests.sh` script:
+You can run the pytest test suite using the provided `run_tests.sh` script:
 
 ```bash
 # Run all tests
@@ -415,19 +441,9 @@ You can run the test suite using the provided `run_tests.sh` script:
 
 # Run with rich output display (more detailed LangSmith output)
 ./run_tests.sh --rich-output
-
-# Run a specific test file
-./run_tests.sh --test tests/test_email_memory.py
-
-# Customize the test suite name in LangSmith
-./run_tests.sh --suite "Custom Test Suite Name"
-
-# Enable test caching to avoid repeated LLM calls
-./run_tests.sh --cache
-
-# Run without LangSmith tracking
-./run_tests.sh --no-tracking
 ```
+
+For details on how the pytest tests are structured and what they verify, see the [tests/README.md](tests/README.md) file.
 
 All test results are tracked in LangSmith, allowing you to analyze performance metrics, review model outputs, and compare results across different runs and implementations.
 
