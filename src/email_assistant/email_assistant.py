@@ -12,7 +12,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 
 # Initialize the LLM
-llm = init_chat_model("openai:o3-mini")
+llm = init_chat_model("openai:gpt-4o")
 
 # We'll use structured output to generate classification results
 llm_router = llm.with_structured_output(RouterSchema) 
@@ -119,10 +119,11 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
     return Command(goto=goto, update=update)
 
 # Build workflow
-email_assistant = (
+overall_workflow = (
     StateGraph(State,input=StateInput)
     .add_node(triage_router)
     .add_node("response_agent", agent)
     .add_edge(START, "triage_router")
-    .compile()
 )
+
+email_assistant = overall_workflow.compile()

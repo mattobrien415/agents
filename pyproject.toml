@@ -6,8 +6,9 @@ requires-python = ">=3.8"
 dependencies = [
     "langchain",
     "langchain-anthropic",
+    "langchain-openai",
     "langgraph",
-    "langmem",
+    "langmem>=0.0.20",
     "openevals",
     "langsmith[pytest]>=0.3.4",
     "pandas",

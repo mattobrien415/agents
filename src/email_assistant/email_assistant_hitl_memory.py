@@ -61,7 +61,7 @@ tools = [
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Initialize the LLM
-llm = init_chat_model("openai:o3-mini")
+llm = init_chat_model("openai:gpt-4o")
 
 # Router LLM 
 llm_router = llm.with_structured_output(RouterSchema) 
@@ -73,7 +73,8 @@ triage_feedback_memory_manager = create_memory_store_manager(
     namespace=("email_assistant", "triage_preferences"),
     instructions="""Extract user email triage preferences into a single set of rules.
     Format the information as a string explaining the criteria for each category.""",
-    enable_inserts=False # Update profile in-place
+    enable_inserts=False, # Update profile in-place,
+    enable_deletes=False # Do not delete profile from memory
 )
 
 response_preferences_memory_manager = create_memory_store_manager(
@@ -81,7 +82,8 @@ response_preferences_memory_manager = create_memory_store_manager(
     namespace=("email_assistant", "response_preferences"),
     instructions="""Extract user email response preferences into a single set of rules.
     Format the information as a string explaining the criteria for each category.""",
-    enable_inserts=False # Update profile in-place
+    enable_inserts=False, # Update profile in-place,
+    enable_deletes=False # Do not delete profile from memory
 )
 
 cal_preferences_memory_manager = create_memory_store_manager(
@@ -89,7 +91,8 @@ cal_preferences_memory_manager = create_memory_store_manager(
     namespace=("email_assistant", "cal_preferences"),
     instructions="""Extract user email calendar preferences into a single set of rules.
     Format the information as a string explaining the criteria for each category.""",
-    enable_inserts=False # Update profile in-place
+    enable_inserts=False, # Update profile in-place,
+    enable_deletes=False # Do not delete profile from memory
 )   
 
 background_memory_manager = create_memory_store_manager(
@@ -97,7 +100,8 @@ background_memory_manager = create_memory_store_manager(
     namespace=("email_assistant", "background"),
     instructions="""Extract user email background information about the user, their key connections, and other relevant information.
     Format this as a collection of short memories that can be easily recalled.""",
-    enable_inserts=True # Update background in-place
+    enable_inserts=True, # Update background in-place,
+    enable_deletes=True # Since this is a collection, we can delete items (if they are no longer relevant)
 )
 
 # Nodes 

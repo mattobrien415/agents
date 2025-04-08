@@ -48,7 +48,7 @@ tools = [
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Initialize the LLM
-llm = init_chat_model("openai:o3-mini")
+llm = init_chat_model("openai:gpt-4o")
 
 # Router LLM 
 llm_router = llm.with_structured_output(RouterSchema) 

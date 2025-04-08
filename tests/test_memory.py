@@ -1,13 +1,30 @@
 import pytest
 import uuid
+import sys
+import os
 from langsmith import testing as t
-from src.email_assistant.email_assistant_hitl import overall_workflow
+from pydantic import BaseModel, Field
+from typing import Literal
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Use email_assistant_hitl_memory for memory tests
+from src.email_assistant.email_assistant_hitl_memory import overall_workflow
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
+from langchain.chat_models import init_chat_model
+
+class GradeResponse(BaseModel):
+    """Score the response."""
+    grade: bool = Field(description="Does the response meet the criteria?")
+    justification: str = Field(description="The justification for the grade.")
+
+
 @pytest.mark.langsmith
-def test_email_assistant_hitl_notify():
+def test_hitl_memory_notify():
     """Test that the HITL-enabled email assistant notification workflow runs successfully."""
     
     # Test email input (notify scenario)
@@ -31,7 +48,7 @@ System Admin Team"""
     # Compile the graph
     checkpointer = MemorySaver()
     store = InMemoryStore()
-    graph = overall_workflow.compile(checkpointer=checkpointer)
+    graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
     thread_id = uuid.uuid4()
     thread_config = {"configurable": {"thread_id": thread_id}}
     
@@ -50,23 +67,33 @@ System Admin Team"""
         messages.append(chunk)
     
     state = graph.get_state(thread_config)
-    all_messages_str = " === ".join(m.content for m in state.values['messages'])
+    
+    # Access state correctly based on type
+    if hasattr(state, "values"):
+        values = state.values
+    else:
+        values = state
+    
+    # Generate message output string
+    all_messages_str = " === ".join(m.content for m in values['messages'])
 
     # Log feedback response
-    t.log_outputs({"messages": state["messages"]})
+    t.log_outputs({"messages": values["messages"]})
 
     # Results
     results = store.search(("email_assistant", "triage_preferences"))
-    triage_instructions = results[0].value['content']['content']
+    print("RESULTS - triage_preferences - FROM MEMORY")
+    print(results)
+    triage_instructions_updated = results[0].value['content']['content']
 
     # Assert we got responses and registered the feedback and stored the triage instructions in memory
-    assert state.values["classification_decision"] is not None 
+    assert values["classification_decision"] is not None 
     assert "For anything from the System Admin Team" in all_messages_str
-    assert "System Admin" in triage_instructions
+    assert "System Admin" in triage_instructions_updated
 
 @pytest.mark.langsmith
-def test_email_assistant_hitl_edit():
-    """Test that the HITL-enabled email assistant notification workflow runs successfully."""
+def test_hitl_memory_respond_edit():
+    """Test that the HITL-enabled email assistant response-edit workflow runs successfully."""
     
     # Test email input (respond scenario)
     email_input = {
@@ -104,9 +131,9 @@ Alice""",}
 
     # Edit the email and resume the graph
     resume_command = Command(resume=[{"type": "edit",  
-                                           "args": {"args": {"to": "Alice Smith <alice.smith@company.com>",
-                                                             "subject": "RE: Quick question about API documentation",
-                                                             "content": "Thanks Alice, I will fix it!"}}}])
+                                         "args": {"args": {"to": "Alice Smith <alice.smith@company.com>",
+                                                           "subject": "RE: Quick question about API documentation",
+                                                           "content": "Thanks Alice, I will fix it!"}}}])
     
     for chunk in graph.stream(resume_command, config=thread_config):
         messages.append(chunk)
@@ -115,15 +142,28 @@ Alice""",}
     response_preferences_post_update = results[0].value['content']['content']
 
     state = graph.get_state(thread_config)
-    all_messages_str = " === ".join(m.content for m in state.values['messages'])
+    
+    # Access state correctly based on type
+    if hasattr(state, "values"):
+        values = state.values
+    else:
+        values = state
+    
+    # Generate message output string
+    all_messages_str = " === ".join(m.content for m in values['messages'])
 
     # Log feedback response
-    t.log_outputs({"messages": state["messages"]})
+    t.log_outputs({"messages": values["messages"]})
+
+    # Grade the response
+    llm = init_chat_model("openai:gpt-4o")
+    structured_llm = llm.with_structured_output(GradeResponse)
+    grade = structured_llm.invoke([{"role": "system",
+                                  "content": f"This is an email assistant that uses memory to update its response preferences. Review the initial response preferences and the updated response preferences. Assess whether the updated response preferences are more accurate than the initial response preferences."},
+                                  {"role": "user",
+                                  "content": f"Here are the initial response preferences: {response_preferences_pre_update}. Here are the updated response preferences: {response_preferences_post_update}. Here is the conversation: {all_messages_str}. Confirm that the response preferences are updated."}])
+
     
     # Assert we got responses and registered the edit
-    assert state.values["classification_decision"] is not None 
-    assert "thanks! i will fix it!" in all_messages_str
-
-
-
-    
+    assert values["classification_decision"] is not None 
+    assert grade.grade

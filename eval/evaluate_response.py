@@ -9,8 +9,8 @@ from openevals.llm import create_llm_as_judge
 from eval.prompt import RESPONSE_QUALITY_PROMPT
 from eval.email_dataset import examples_response
 
-from email_assistant.email_assistant import email_assistant
-from email_assistant.email_assistant_react import email_assistant_react
+from email_assistant.email_assistant import email_assistant as email_assistant_workflow 
+from email_assistant.email_assistant_react import email_assistant as email_assistant_react
 from email_assistant.utils import format_messages
 
 # Client 
@@ -41,7 +41,7 @@ def target_email_assistant(inputs: dict) -> dict:
     Returns:
         A formatted dictionary with the assistant's response messages
     """
-    response = email_assistant.invoke({"email_input": inputs["email_input"]})
+    response = email_assistant_workflow.invoke({"email_input": inputs["email_input"]})
     return format_messages(response['messages'])
 
 def target_email_assistant_react(inputs: dict) -> dict:

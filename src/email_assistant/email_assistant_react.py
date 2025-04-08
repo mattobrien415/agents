@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph import MessagesState
 
 # Initialize the LLM
-llm = init_chat_model("openai:o3-mini")
+llm = init_chat_model("openai:gpt-4o")
 
 # Agent tools 
 @tool
@@ -105,15 +105,15 @@ def should_continue(state: State) -> Literal["tool_handler", END]:
     return END
 
 # Build workflow
-agent_builder = StateGraph(State,input=MessagesState)
+overall_workflow = StateGraph(State,input=MessagesState)
 
 # Add nodes
-agent_builder.add_node("llm_call", llm_call)
-agent_builder.add_node("tool_handler", tool_handler)
+overall_workflow.add_node("llm_call", llm_call)
+overall_workflow.add_node("tool_handler", tool_handler)
 
 # Add edges
-agent_builder.add_edge(START, "llm_call")
-agent_builder.add_conditional_edges(
+overall_workflow.add_edge(START, "llm_call")
+overall_workflow.add_conditional_edges(
     "llm_call",
     should_continue,
     {
@@ -121,7 +121,7 @@ agent_builder.add_conditional_edges(
         END: END,
     },
 )
-agent_builder.add_edge("tool_handler", "llm_call")
+overall_workflow.add_edge("tool_handler", "llm_call")
 
 # Compile the agent
-email_assistant = agent_builder.compile()
+email_assistant = overall_workflow.compile()

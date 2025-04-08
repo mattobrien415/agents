@@ -107,8 +107,6 @@ The evaluation framework in the `eval` folder compares the performance of both a
 
 1. **Dataset**: A collection of sample emails with ground truth classifications and responses is defined in `email_dataset.py`
 
-TODO: Improve datasets
-
 2. **Email Triage Evaluation** (`evaluate_triage.py`):
    - Uses LangSmith to run and track evaluations
    - Creates a dataset of test emails if it doesn't exist
@@ -138,8 +136,25 @@ To evaluate the performance of both email assistant implementations, follow thes
    export LANGCHAIN_API_KEY=your_langsmith_api_key
    ```
 
-#### Running the Triage Evaluation
-Execute the triage evaluation script:
+#### Running the Evaluations Using run_all_tests.py
+The easiest way to run all tests and evaluations is to use the provided `run_all_tests.py` script:
+```bash
+python run_all_tests.py
+```
+
+This script offers several options:
+```bash
+# Run with rich output display
+python run_all_tests.py --rich-output
+
+# Run with specific experiment name prefix
+python run_all_tests.py --experiment-name "April8Fix"
+```
+
+#### Running Individual Evaluations
+You can also run individual evaluation scripts:
+
+##### Triage Evaluation
 ```bash
 python -m eval.evaluate_triage
 ```
@@ -151,8 +166,7 @@ This script will:
 4. Generate a visual comparison of the results and save it to `eval/results/`
 5. Print the performance scores of both assistants in the terminal
 
-#### Running the Response Quality Evaluation
-Execute the response quality evaluation script:
+##### Response Quality Evaluation
 ```bash
 python -m eval.evaluate_response
 ```
@@ -177,20 +191,29 @@ You can also find an example dataset with previous evaluation results [here](htt
 The project includes a comprehensive test suite integrated with pytest and LangSmith for continuous evaluation:
 
 ```bash
-# Run all tests with LangSmith integration
-./run_tests.sh
+# Run all tests
+python run_all_tests.py
 
 # Run with rich output display
-./run_tests.sh --rich-output
+python run_all_tests.py --rich-output
 
-# Run a specific test file
-./run_tests.sh --test tests/test_email_memory.py
+# Run with specific experiment name prefix
+python run_all_tests.py --experiment-name "April8Fix"
 
-# Run with custom test suite name
-./run_tests.sh --suite "Email Assistant Beta Tests"
+# Run with warnings disabled (default in run_all_tests.py)
+python run_all_tests.py
+```
 
-# Run with caching to avoid repeated LLM calls
-./run_tests.sh --cache
+Each test type is automatically assigned a descriptive experiment name in LangSmith:
+- `test_run.py` → "Basic Functionality" 
+- `test_hitl.py` → "HITL Tests"
+- `test_memory.py` → "Memory Tests"
+
+When using the `--experiment-name` flag, the provided name will be prefixed to these default names (e.g., "April8Fix - Basic").
+
+You can also run specific tests directly with pytest:
+```
+python -m pytest tests/test_run.py -v
 ```
 
 The test suite includes:
