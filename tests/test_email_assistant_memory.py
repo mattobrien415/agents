@@ -64,8 +64,6 @@ System Admin Team"""
     assert "For anything from the System Admin Team" in all_messages_str
     assert "System Admin" in triage_instructions
 
-
-
 @pytest.mark.langsmith
 def test_email_assistant_hitl_edit():
     """Test that the HITL-enabled email assistant notification workflow runs successfully."""
@@ -101,15 +99,21 @@ Alice""",}
     for chunk in graph.stream({"email_input": email_input}, config=thread_config):
         messages.append(chunk)
     
+    results = store.search(("email_assistant", "response_preferences"))
+    response_preferences_pre_update = results[0].value['content']['content']
+
     # Edit the email and resume the graph
-    resume_command = Command(resume=[{
-        "type": "edit", 
-        "args": "thanks! i will fix it!'"
-    }])
+    resume_command = Command(resume=[{"type": "edit",  
+                                           "args": {"args": {"to": "Alice Smith <alice.smith@company.com>",
+                                                             "subject": "RE: Quick question about API documentation",
+                                                             "content": "Thanks Alice, I will fix it!"}}}])
     
     for chunk in graph.stream(resume_command, config=thread_config):
         messages.append(chunk)
     
+    results = store.search(("email_assistant", "response_preferences"))
+    response_preferences_post_update = results[0].value['content']['content']
+
     state = graph.get_state(thread_config)
     all_messages_str = " === ".join(m.content for m in state.values['messages'])
 

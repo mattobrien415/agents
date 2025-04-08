@@ -15,9 +15,12 @@ You have access to the following tools to help manage communications and schedul
 < Instructions >
 When handling emails, follow these steps:
 1. Carefully analyze the email content and purpose
-2. For meeting requests, use check_calendar_availability to find open time slots
-3. Schedule meetings with the schedule_meeting tool when appropriate
-4. Draft response emails using the write_email tool
+2. IMPORTANT --- always call a tool and call one tool at a time until the task is complete: 
+3. For responding to the email, draft a response email with the write_email tool
+4. For meeting requests, use the check_calendar_availability tool to find open time slots
+5. To schedule a meeting, use the the schedule_meeting tool 
+6. If you scheduled a meeting, then draft a short response email using the write_email tool
+7. After using the write_email tool, the task is complete and you can simply tell the user that the email has been sent
 </ Instructions >
 
 < Background >
@@ -82,9 +85,12 @@ You have access to the following tools to help manage communications and schedul
 < Instructions >
 When handling emails, follow these steps:
 1. Carefully analyze the email content and purpose
-2. For meeting requests, use check_calendar_availability to find open time slots
-3. Schedule meetings with the schedule_meeting tool when appropriate
-4. Draft response emails using the write_email tool
+2. IMPORTANT --- always call a tool and call one tool at a time until the task is complete: 
+3. For responding to the email, draft a response email with the write_email tool
+4. For meeting requests, use the check_calendar_availability tool to find open time slots
+5. To schedule a meeting, use the the schedule_meeting tool 
+6. If you scheduled a meeting, then draft a short response email using the write_email tool
+7. After using the write_email tool, the task is complete and you can simply tell the user that the email has been sent
 </ Instructions >
 
 < Background >
@@ -117,10 +123,13 @@ You have access to the following tools to help manage communications and schedul
 < Instructions >
 When handling emails, follow these steps:
 1. Carefully analyze the email content and purpose
-2. If the provided background information, meeting preferences, or response preferences are not sufficient, use the Question tool to ask follow-up questions
-3. For meeting requests, use check_calendar_availability to find open time slots
-4. Schedule meetings with the schedule_meeting tool when appropriate
-5. Draft response emails using the write_email tool
+2. IMPORTANT --- always call a tool and call one tool at a time until the task is complete: 
+3. If you need more information to complete the task, use the Question tool to ask a follow-up question to the user 
+4. For responding to the email, draft a response email with the write_email tool
+5. For meeting requests, use the check_calendar_availability tool to find open time slots
+6. To schedule a meeting, use the the schedule_meeting tool 
+7. If you scheduled a meeting, then draft a short response email using the write_email tool
+8. After using the write_email tool, the task is complete and you can simply tell the user that the email has been sent
 </ Instructions >
 
 < Background >
@@ -156,13 +165,16 @@ You have access to the following tools to help manage communications and schedul
 < Instructions >
 When handling emails, follow these steps:
 1. Carefully analyze the email content and purpose
-2. To gather information background information use the "background" tool
-3. To gather information about meeting preferences use the "cal_preferences" tool
-4. To gather information about response preferences use the "response_preferences" tool
-5. If the provided background information, meeting preferences, or response preferences are not sufficient, use the Question tool to ask follow-up questions
-6. For meeting requests, use check_calendar_availability to find open time slots
-7. Schedule meetings with the schedule_meeting tool when appropriate
-8. Draft response emails using the write_email tool
+2. IMPORTANT --- always call a tool and call one tool at a time until the task is complete: 
+3. To gather information background information use the "background" tool
+4. To gather information about meeting preferences use the "cal_preferences" tool
+5. To gather information about response preferences use the "response_preferences" tool
+6. If the provided background information, meeting preferences, or response preferences are not sufficient, use the Question tool to ask follow-up questions
+7. For meeting requests, use the check_calendar_availability tool to find open time slots
+8. Schedule meetings with the schedule_meeting tool when appropriate
+9. If you scheduled a meeting, then draft a short response email using the write_email tool
+10. Draft response emails using the write_email tool
+11. After calling the write_email tool, the task is complete and you can simply tell the user that the email has been sent
 </ Instructions >
 """
 

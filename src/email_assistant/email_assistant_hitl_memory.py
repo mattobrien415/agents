@@ -101,7 +101,7 @@ background_memory_manager = create_memory_store_manager(
 )
 
 # Nodes 
-def triage_router(state: State, store: BaseStore) -> Command[Literal["response_agent", "__end__"]]:
+def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_interrupt_handler", "response_agent", "__end__"]]:
     """Analyze email content to decide if we should respond, notify, or ignore.
 
     The triage step prevents the assistant from wasting time on:
@@ -220,10 +220,10 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
             "args": {}
         },
         "config": {
-            "allow_ignore": False,  
+            "allow_ignore": True,  
             "allow_respond": True, # Allow user feedback if decision is not correct 
             "allow_edit": False, 
-            "allow_accept": True, # Allow user to accept decision 
+            "allow_accept": False,  
         },
         # Email to show in Agent Inbox
         "description": email_markdown,

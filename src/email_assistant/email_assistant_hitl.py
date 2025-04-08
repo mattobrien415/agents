@@ -55,7 +55,7 @@ llm_router = llm.with_structured_output(RouterSchema)
 llm_with_tools = llm.bind_tools(tools)
 
 # Nodes 
-def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "__end__"]]:
+def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "response_agent", "__end__"]]:
     """Analyze email content to decide if we should respond, notify, or ignore.
 
     The triage step prevents the assistant from wasting time on:
