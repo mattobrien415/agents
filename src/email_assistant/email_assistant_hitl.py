@@ -5,12 +5,9 @@ from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.store.base import BaseStore
 from langgraph.types import interrupt, Command
 
-from langmem import create_search_memory_tool, create_memory_store_manager
-
-from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_triage_instructions, default_background, default_response_preferences, default_cal_preferences
+from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl, default_background, default_triage_instructions, default_response_preferences, default_cal_preferences
 from email_assistant.schemas import State, RouterSchema, StateInput
 from email_assistant.utils import parse_email, format_for_display, format_email_markdown
 
@@ -40,22 +37,12 @@ class Question(BaseModel):
       """Question to ask user."""
       content: str
     
-# Memory search tools for reading from memory Store 
-response_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "response_preferences"), name="response_preferences")
-cal_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "cal_preferences"), name="cal_preferences")
-background_tool = create_search_memory_tool(namespace=("email_assistant", "background"), name="background")
-triage_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "triage_preferences"), name="triage_preferences")
-
 # All tools available to the agent
 tools = [
     write_email, 
     schedule_meeting, 
     check_calendar_availability, 
     Question, 
-    response_preferences_tool, 
-    cal_preferences_tool, 
-    background_tool,
-    triage_preferences_tool
 ]
 
 tools_by_name = {tool.name: tool for tool in tools}
@@ -67,41 +54,8 @@ llm = init_chat_model("openai:o3-mini")
 llm_router = llm.with_structured_output(RouterSchema) 
 llm_with_tools = llm.bind_tools(tools)
 
-# Feedback memory managers for writing to memory Store 
-triage_feedback_memory_manager = create_memory_store_manager(
-    llm,
-    namespace=("email_assistant", "triage_preferences"),
-    instructions="""Extract user email triage preferences into a single set of rules.
-    Format the information as a string explaining the criteria for each category.""",
-    enable_inserts=False # Update profile in-place
-)
-
-response_preferences_memory_manager = create_memory_store_manager(
-    llm,
-    namespace=("email_assistant", "response_preferences"),
-    instructions="""Extract user email response preferences into a single set of rules.
-    Format the information as a string explaining the criteria for each category.""",
-    enable_inserts=False # Update profile in-place
-)
-
-cal_preferences_memory_manager = create_memory_store_manager(
-    llm,
-    namespace=("email_assistant", "cal_preferences"),
-    instructions="""Extract user email calendar preferences into a single set of rules.
-    Format the information as a string explaining the criteria for each category.""",
-    enable_inserts=False # Update profile in-place
-)   
-
-background_memory_manager = create_memory_store_manager(
-    llm,
-    namespace=("email_assistant", "background"),
-    instructions="""Extract user email background information about the user, their key connections, and other relevant information.
-    Format this as a collection of short memories that can be easily recalled.""",
-    enable_inserts=True # Update background in-place
-)
-
 # Nodes 
-def triage_router(state: State, store: BaseStore) -> Command[Literal["response_agent", "__end__"]]:
+def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "__end__"]]:
     """Analyze email content to decide if we should respond, notify, or ignore.
 
     The triage step prevents the assistant from wasting time on:
@@ -109,31 +63,11 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["response_a
     - Company-wide announcements
     - Messages meant for other teams
     """
-
-    # TODO(discuss w/ Will):: FIND BETTER WAY TO HANDLE THIS; WE NEED TO INITIALIZE THE MEMORY IF IT DOESN'T EXIST
-    results = store.search(("email_assistant", "triage_preferences"))
-    if results:
-        triage_instructions = results[0].value['content']['content']
-    else:
-        triage_instructions = default_triage_instructions
-        triage_feedback_memory_manager.invoke({"messages": [{"role": "user", "content": triage_instructions}]})
-        
-    # Search for background information in Store
-    results = store.search(("email_assistant", "background"))
-    if results:
-        # Handle background which could be a list of memory objects
-        backgrounds = []
-        for result in results:
-            backgrounds.append(result.value['content']['content'])
-        background_content = "\n".join(backgrounds)
-    else:
-        background_content = default_background
-        background_memory_manager.invoke({"messages": [{"role": "user", "content": background_content}]})
         
     # Format system prompt with background and triage instructions
     system_prompt = triage_system_prompt.format(
-        background=background_content,
-        triage_instructions=triage_instructions,
+        background=default_background,
+        triage_instructions=default_triage_instructions
     )
 
     # Parse the email input
@@ -199,7 +133,7 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["response_a
         raise ValueError(f"Invalid classification: {classification}")
     return Command(goto=goto, update=update)
 
-def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal["response_agent", "__end__"]]:
+def triage_interrupt_handler(state: State) -> Command[Literal["response_agent", "__end__"]]:
     """Handles interrupts from the triage step"""
     
     # Parse the email input
@@ -220,16 +154,16 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
             "args": {}
         },
         "config": {
-            "allow_ignore": False,  
+            "allow_ignore": True,  
             "allow_respond": True, # Allow user feedback if decision is not correct 
             "allow_edit": False, 
-            "allow_accept": True, # Allow user to accept decision 
+            "allow_accept": False,  
         },
         # Email to show in Agent Inbox
         "description": email_markdown,
     }
 
-    # Send to Agent Inbox and wait for response
+    # Agent Inbox responds with a list  
     response = interrupt([request])[0]
 
     # Accept the decision and end   
@@ -243,8 +177,7 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
         messages.append({"role": "user",
                         "content": f"Here is feedback on how the user would prefer the email to be classified: {user_input}"
                         })
-        # Update memory with feedback using the memory manager
-        triage_feedback_memory_manager.invoke({"messages": messages})
+
         goto = END
 
     # Update the state 
@@ -254,39 +187,23 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
 
     return Command(goto=goto, update=update)
 
-def llm_call(state: State, store: BaseStore):
+def llm_call(state: State):
     """LLM decides whether to call a tool or not"""
-
-    # TODO (discuss w/ Will): May be a nicer way to initialize the memory
-    # Calendar preferences
-    results = store.search(
-        ("email_assistant", "cal_preferences")
-    )
-    if not results:
-        cal_preferences = default_cal_preferences
-        cal_preferences_memory_manager.invoke({"messages": [{"role": "user", "content": cal_preferences}]})
-
-    # Response preferences
-    results = store.search(
-        ("email_assistant", "response_preferences")
-    )
-    if not results:
-        response_preferences = default_response_preferences
-        response_preferences_memory_manager.invoke({"messages": [{"role": "user", "content": response_preferences}]})
 
     return {
         "messages": [
             llm_with_tools.invoke(
                 [
-                    {"role": "system", "content": agent_system_prompt_hitl_memory}
+                    {"role": "system", "content": agent_system_prompt_hitl.format(background=default_background,
+                                                                                  response_preferences=default_response_preferences, 
+                                                                                  cal_preferences=default_cal_preferences)}
                 ]
                 + state["messages"]
             )
         ]
     }
-    
 
-def interrupt_handler(state: State, store: BaseStore):
+def interrupt_handler(state: State):
     """Creates an interrupt for human review of tool calls"""
     
     # Store messages
@@ -360,26 +277,17 @@ def interrupt_handler(state: State, store: BaseStore):
             tool = tools_by_name[tool_call["name"]]
             observation = tool.invoke(tool_call["args"])
             result.append({"role": "tool", "content": observation, "tool_call_id": tool_call["id"]})
-            
-            # Remember facts from the conversation with background memory manager
-            background_memory_manager.invoke({"messages": state["messages"] + result})
-            
+                        
         elif response["type"] == "edit":
 
             # Tool selection 
             tool = tools_by_name[tool_call["name"]]
             
             # Get edited args from Agent Inbox
-            # TODO: Talk to Brace. This is confusing. 
             edited_args = response["args"]["args"]
 
             # Save feedback in memory and update the write_email tool call with the edited content from Agent Inbox
             if tool_call["name"] == "write_email":
-
-                # Let's save our response preferences in memory
-                response_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"Here is a better way to respond to emails: {edited_args}"}]
-                })
                 
                 # TODO (discuss w/ Vadym): FIND BETTER WAY TO HANDLE THIS 
                 # Update the AI message's tool call with edited content (reference to the message in the state)
@@ -399,10 +307,6 @@ def interrupt_handler(state: State, store: BaseStore):
             
             # Save feedback in memory and update the schedule_meeting tool call with the edited content from Agent Inbox
             elif tool_call["name"] == "schedule_meeting":
-                # Add context about calendar preferences
-                cal_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"Here are preferred calendar settings: {edited_args}"}]
-                })
                 
                 # Update the AI message's tool call with edited content
                 ai_message = state["messages"][-1]
@@ -420,34 +324,14 @@ def interrupt_handler(state: State, store: BaseStore):
                 result.append({"role": "tool", "content": observation, "tool_call_id": current_id})
 
         elif response["type"] == "ignore":
-            # Update relevant domain-specific memory
-            if tool_call["name"] == "write_email":
-                # Add context about email response preferences
-                response_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"User decided to ignore this email! Make note of this as an few shot example."}]
-                })
-            elif tool_call["name"] == "schedule_meeting":
-                # Add context about calendar preferences
-                cal_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"User decided to ignore this email! Make note of this as an few shot example."}]
-                })
-
+            # Don't execute the tool
+            result.append({"role": "tool", "content": "Tool execution cancelled by user", "tool_call_id": tool_call["id"]})
+            
         elif response["type"] == "response":
             # User provided feedback
             user_feedback = response["args"]
             result.append({"role": "tool", "content": f"Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
-            # Also update relevant domain-specific memory
-            if tool_call["name"] == "write_email":
-                # Add context about email response preferences
-                response_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"Here is feedback on how to respond to emails: {user_feedback}"}]
-                })
-            elif tool_call["name"] == "schedule_meeting":
-                # Add context about calendar preferences
-                cal_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"Here is feedback on calendar scheduling: {user_feedback}"}]
-                })
-
+            
     return {"messages": result}
 
 # Conditional edge functions
@@ -462,7 +346,7 @@ def should_continue(state: State) -> Literal["interrupt_handler", END]:
 # Build workflow
 agent_builder = StateGraph(State)
 
-# Add nodes - with store parameter
+# Add nodes
 agent_builder.add_node("llm_call", llm_call)
 agent_builder.add_node("interrupt_handler", interrupt_handler)
 
@@ -478,16 +362,17 @@ agent_builder.add_conditional_edges(
 )
 agent_builder.add_edge("interrupt_handler", "llm_call")
 
-# Compile the agent - nodes will receive store parameter automatically
+# Compile the agent
 response_agent = agent_builder.compile()
 
-# Build overall workflow with store and checkpointer
+# Build overall workflow
 overall_workflow = (
     StateGraph(State, input=StateInput)
     .add_node(triage_router)
     .add_node(triage_interrupt_handler)
     .add_node("response_agent", response_agent)
     .add_edge(START, "triage_router")
+    
 )
 
 email_assistant = overall_workflow.compile()

@@ -9,9 +9,11 @@ dependencies = [
     "langgraph",
     "langmem",
     "openevals",
-    "langsmith",
+    "langsmith[pytest]>=0.3.4",
     "pandas",
-    "matplotlib"
+    "matplotlib",
+    "pytest",
+    "pytest-xdist"
 ]
 
 [project.optional-dependencies]

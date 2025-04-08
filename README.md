@@ -172,6 +172,36 @@ You can also find an example dataset with previous evaluation results [here](htt
 
 ![Screenshot 2025-04-01 at 3 04 05 PM](https://github.com/user-attachments/assets/0545212b-4563-4ca8-a748-abe31c84ee18)
 
+### Automated Testing with pytest and LangSmith
+
+The project includes a comprehensive test suite integrated with pytest and LangSmith for continuous evaluation:
+
+```bash
+# Run all tests with LangSmith integration
+./run_tests.sh
+
+# Run with rich output display
+./run_tests.sh --rich-output
+
+# Run a specific test file
+./run_tests.sh --test tests/test_email_memory.py
+
+# Run with custom test suite name
+./run_tests.sh --suite "Email Assistant Beta Tests"
+
+# Run with caching to avoid repeated LLM calls
+./run_tests.sh --cache
+```
+
+The test suite includes:
+- Basic email assistant tests (`run_test.py`)
+- Email content memory tests (`test_email_memory.py`)
+- Calendar and scheduling memory tests (`test_calendar_memory.py`)
+
+Each test is marked with `@pytest.mark.langsmith` and logs inputs, outputs, and feedback to LangSmith, creating a dataset and experiment that can be viewed in the LangSmith dashboard.
+
+For more details, see the `tests/README.md` file.
+
 ## Human-in-the-loop 
 
 TODO: Add notebooks
@@ -362,6 +392,71 @@ This graph uses feedback from HITL (Agent Inbox) to update the memory.
 Over time, you can see memories accumulate in the `Memory` store viewing in LangGraph Studio.
 
 ![Screenshot 2025-04-04 at 4 08 03 PM](https://github.com/user-attachments/assets/2f8adbc5-9719-46df-a77d-d52c71c015dc)
+
+## Testing
+
+The project includes comprehensive testing capabilities that leverage pytest and LangSmith for evaluation and tracking. Tests verify the functionality of different email assistant implementations, including classification, response generation, and memory features.
+
+### Evaluation Framework
+
+The evaluation framework in the `eval` folder compares the performance of both assistant implementations on two key aspects:
+
+1. **Dataset**: A collection of sample emails with ground truth classifications and responses is defined in `email_dataset.py`
+
+2. **Email Triage Evaluation** (`evaluate_triage.py`):
+   - Uses LangSmith to run and track evaluations
+   - Creates a dataset of test emails if it doesn't exist
+   - Runs both assistant implementations against the dataset
+   - Uses direct string matching to evaluate if classifications match expected values
+   - Scores assistants on a 0-1 scale based on exact matches
+
+3. **Email Response Evaluation** (`evaluate_response.py`):
+   - Uses the same LangSmith evaluation framework
+   - Creates a response quality dataset if it doesn't exist
+   - Uses an LLM-as-judge approach with the `RESPONSE_QUALITY_PROMPT` 
+   - Assesses how well each assistant crafts appropriate responses
+   - Scores response quality on a 0-1 scale
+
+4. **Visualization**:
+   - Each evaluation generates a comparative bar chart showing performance of both approaches
+   - Saves results to `eval/results/` with timestamps
+   - Provides clear metrics on which assistant performed better
+
+### Pytest Tests
+
+The `tests` directory contains pytest tests with LangSmith integration for all four email assistant implementations:
+
+- **React Agent Tests** (`test_email_assistant_react.py`): Tests the ReAct agent-based email assistant
+- **Workflow Tests** (`test_email_assistant_workflow.py`): Tests the workflow-based email assistant
+- **HITL Tests** (`test_email_assistant_hitl.py`): Tests the human-in-the-loop email assistant with feedback
+- **Memory Tests** (`test_email_assistant_memory.py`): Tests the memory-enabled HITL email assistant
+
+### Running Tests
+
+You can run the pytest test suite using the provided `run_tests.sh` script:
+
+```bash
+# Run all tests
+./run_tests.sh
+
+# Run with rich output display (more detailed LangSmith output)
+./run_tests.sh --rich-output
+```
+
+For details on how the pytest tests are structured and what they verify, see the [tests/README.md](tests/README.md) file.
+
+All test results are tracked in LangSmith, allowing you to analyze performance metrics, review model outputs, and compare results across different runs and implementations.
+
+### LangSmith Integration
+
+The tests automatically create datasets and track experiments in LangSmith. Each test is marked with `@pytest.mark.langsmith` and uses LangSmith testing utilities to log inputs, outputs, and feedback. Test results include:
+
+- Classification accuracy scores
+- Response quality metrics
+- Tool call correctness
+- Human intervention outcomes
+
+For more details about the testing framework, see [tests/README.md](tests/README.md).
 
 ## Deployment 
 
