@@ -204,6 +204,8 @@ python run_all_tests.py --experiment-name "April8Fix"
 python run_all_tests.py
 ```
 
+![Screenshot 2025-04-08 at 8 07 48 PM](https://github.com/user-attachments/assets/f04a0beb-7c5e-4fec-8e6b-af181ec21300)
+
 Each test type is automatically assigned a descriptive experiment name in LangSmith:
 - `test_run.py` → "Basic Functionality" 
 - `test_hitl.py` → "HITL Tests"
