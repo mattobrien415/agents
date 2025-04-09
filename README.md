@@ -103,28 +103,29 @@ In studio, you can test both assistants with some email inputs directly to see w
 
 ### Structure 
 
-The evaluation framework in the `eval` folder compares the performance of both assistant implementations on two key aspects:
+The evaluation framework uses a combination of `eval` folder for triage comparison and `tests` folder for comprehensive testing:
 
-1. **Dataset**: A collection of sample emails with ground truth classifications and responses is defined in `email_dataset.py`
+1. **Dataset**: A collection of sample emails with ground truth classifications, responses, and expected tool calls is defined in `eval/email_dataset.py`
 
-2. **Email Triage Evaluation** (`evaluate_triage.py`):
+2. **Email Triage Evaluation** (`eval/evaluate_triage.py`):
    - Uses LangSmith to run and track evaluations
    - Creates a dataset of test emails if it doesn't exist
    - Runs both assistant implementations against the dataset
    - Uses direct string matching to evaluate if classifications match expected values
    - Scores assistants on a 0-1 scale based on exact matches
 
-3. **Email Response Evaluation** (`evaluate_response.py`):
-   - Uses the same LangSmith evaluation framework
-   - Creates a response quality dataset if it doesn't exist
-   - Uses an LLM-as-judge approach with the `RESPONSE_QUALITY_PROMPT` 
-   - Assesses how well each assistant crafts appropriate responses
-   - Scores response quality on a 0-1 scale
+3. **Automated Testing** (`tests/test_email_assistant.py`):
+   - Comprehensive evaluation of all email assistant implementations
+   - Tests response quality against specific criteria
+   - Verifies correct tool calls for each email type
+   - Uses LLM-as-judge approach for quality evaluation
+   - Logs detailed results to LangSmith
 
-4. **Visualization**:
-   - Each evaluation generates a comparative bar chart showing performance of both approaches
-   - Saves results to `eval/results/` with timestamps
-   - Provides clear metrics on which assistant performed better
+4. **Visualization and Reporting**:
+   - Each evaluation generates reports saved to `eval/results/` with timestamps
+   - Test results include rich formatting with pass/fail indicators
+   - LangSmith dashboard provides comprehensive analysis
+   - Individual test cases appear as separate traces for detailed review
 
 ### Run Evaluation 
 
@@ -166,12 +167,17 @@ This script will:
 4. Generate a visual comparison of the results and save it to `eval/results/`
 5. Print the performance scores of both assistants in the terminal
 
-##### Response Quality Evaluation
+##### Response Quality and Tool Call Evaluation
 ```bash
-python -m eval.evaluate_response
+python -m pytest tests/test_email_assistant.py::test_response_criteria_evaluation -v
+python -m pytest tests/test_email_assistant.py::test_email_dataset_tool_calls -v
 ```
 
-This script follows the same approach but focuses on evaluating the quality and appropriateness of email responses.
+These tests evaluate:
+1. The quality of responses against specific criteria for each email type
+2. The correct use of tools (write_email, schedule_meeting, check_calendar_availability)
+3. Each test case is individually logged to LangSmith
+4. Detailed results are saved to `eval/results/` folder
 
 #### Understanding the Results
 The triage evaluation measures how well each assistant correctly classifies emails as "respond", "notify", or "ignore" using direct string matching with the expected classifications. The response evaluation uses an LLM-as-judge approach to measure the quality and appropriateness of the responses generated. Both use a 0-1 scale, where higher scores indicate better performance.
@@ -420,32 +426,32 @@ Over time, you can see memories accumulate in the `Memory` store viewing in Lang
 
 ## Testing
 
-The project includes comprehensive testing capabilities that leverage pytest and LangSmith for evaluation and tracking. Tests verify the functionality of different email assistant implementations, including classification, response generation, and memory features.
+The project includes comprehensive testing capabilities that leverage pytest and LangSmith for evaluation and tracking. Tests verify the functionality of different email assistant implementations, including classification, response generation, tool usage, and memory features.
 
-### Evaluation Framework
+### Comprehensive Test Framework
 
-The evaluation framework in the `eval` folder compares the performance of both assistant implementations on two key aspects:
+The testing framework consists of:
 
-1. **Dataset**: A collection of sample emails with ground truth classifications and responses is defined in `email_dataset.py`
+1. **Dataset**: A collection of sample emails with ground truth classifications, response criteria, and expected tool calls is defined in `eval/email_dataset.py`
 
-2. **Email Triage Evaluation** (`evaluate_triage.py`):
-   - Uses LangSmith to run and track evaluations
-   - Creates a dataset of test emails if it doesn't exist
-   - Runs both assistant implementations against the dataset
-   - Uses direct string matching to evaluate if classifications match expected values
-   - Scores assistants on a 0-1 scale based on exact matches
+2. **Email Assistant Tests** (`tests/test_email_assistant.py`):
+   - Tests basic functionality, HITL integration, and memory features
+   - Includes multiple test functions for different aspects of the assistant
+   - Uses parametrized testing to evaluate each email individually
+   - Tests tool calls extraction and verification against expected tools
+   - Evaluates response quality against specific criteria for each email type
 
-3. **Email Response Evaluation** (`evaluate_response.py`):
-   - Uses the same LangSmith evaluation framework
-   - Creates a response quality dataset if it doesn't exist
-   - Uses an LLM-as-judge approach with the `RESPONSE_QUALITY_PROMPT` 
-   - Assesses how well each assistant crafts appropriate responses
-   - Scores response quality on a 0-1 scale
+3. **Response Criteria Evaluation**:
+   - Uses an LLM-as-judge approach with GPT-4o
+   - Scores responses on a 1-10 scale based on detailed criteria
+   - Provides in-depth justification for each evaluation
+   - Individual results for each email test case
 
-4. **Visualization**:
-   - Each evaluation generates a comparative bar chart showing performance of both approaches
-   - Saves results to `eval/results/` with timestamps
-   - Provides clear metrics on which assistant performed better
+4. **Tool Call Verification**:
+   - Extracts tool calls from agent execution
+   - Verifies that expected tools are used for each email type
+   - Allows additional tool calls but enforces required tools
+   - Reports missing tools and extra tools separately
 
 ### Pytest Tests
 
@@ -458,30 +464,51 @@ The `tests` directory contains pytest tests with LangSmith integration for all f
 
 ### Running Tests
 
-You can run the pytest test suite using the provided `run_tests.sh` script:
+You can run the complete test suite using the provided `run_all_tests.py` script:
 
 ```bash
 # Run all tests
-./run_tests.sh
+python run_all_tests.py
 
-# Run with rich output display (more detailed LangSmith output)
-./run_tests.sh --rich-output
+# Run tests for a specific implementation
+python run_all_tests.py --implementation email_assistant_hitl_memory
+
+# Run with a specific experiment name
+python run_all_tests.py --experiment-name "April10_Improvements" 
 ```
 
-For details on how the pytest tests are structured and what they verify, see the [tests/README.md](tests/README.md) file.
+You can also run specific test functions to evaluate particular aspects:
 
-All test results are tracked in LangSmith, allowing you to analyze performance metrics, review model outputs, and compare results across different runs and implementations.
+```bash
+# Test tool call extraction and verification
+python -m pytest tests/test_email_assistant.py::test_email_dataset_tool_calls -v
+
+# Test response quality against criteria
+python -m pytest tests/test_email_assistant.py::test_response_criteria_evaluation -v
+
+# Test basic functionality
+python -m pytest tests/test_email_assistant.py::test_response_generation -v
+```
+
+All test results are automatically logged to LangSmith with detailed traces for each test case, allowing you to analyze performance metrics, review model outputs, and compare results across different runs and implementations. Results are also saved to JSON files in the `eval/results/` directory for offline analysis.
 
 ### LangSmith Integration
 
-The tests automatically create datasets and track experiments in LangSmith. Each test is marked with `@pytest.mark.langsmith` and uses LangSmith testing utilities to log inputs, outputs, and feedback. Test results include:
+The tests automatically log results to LangSmith for comprehensive analysis. Each test is marked with `@pytest.mark.langsmith` and uses pytest.mark.parametrize to ensure individual test cases are properly logged. Test results include:
 
-- Classification accuracy scores
-- Response quality metrics
-- Tool call correctness
+- Classification accuracy and decision logic
+- Response quality metrics with 1-10 scoring
+- Tool call extraction and verification
+- Detailed justifications for evaluations
 - Human intervention outcomes
 
-For more details about the testing framework, see [tests/README.md](tests/README.md).
+With the parametrized testing approach, each email test case appears as an individual run in LangSmith, making it easy to:
+- Filter results by email type
+- Compare performance across different email categories
+- Identify patterns in tool usage
+- Track scoring trends over time
+
+All test results are also saved to the `eval/results/` directory as JSON files with timestamps for offline analysis and version tracking.
 
 ## Deployment 
 

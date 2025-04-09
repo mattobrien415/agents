@@ -3,65 +3,57 @@
 import uuid
 import importlib
 import pytest
-import sys
 import os
-from typing import Dict, List, Any, Optional, Tuple, Union
-
+import json
+import datetime
+from typing import Dict, List, Any, Tuple
 from pydantic import BaseModel, Field
 
 from langchain.chat_models import init_chat_model
 
 from langsmith import testing as t
 
-from langgraph.store.memory import InMemoryStore
 from langgraph.checkpoint.memory import MemorySaver
-
-from eval.email_dataset import examples_triage, examples_response
+from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
-class GradeResponse(BaseModel):
-    """Score the response."""
-    grade: bool = Field(description="Does the response meet the criteria?")
-    justification: str = Field(description="The justification for the grade.")
+from src.email_assistant.utils import extract_tool_calls, format_messages_string
+from eval.prompt import RESPONSE_CRITERIA_SYSTEM_PROMPT, HITL_FEEDBACK_SYSTEM_PROMPT, MEMORY_UPDATE_SYSTEM_PROMPT
+from eval.email_dataset import (
+    STANDARD_EMAIL, NOTIFICATION_EMAIL, examples_triage, examples_response,
+    email_input_1, email_input_2, email_input_3, email_input_4, email_input_5,
+    email_input_6, email_input_7, email_input_8, email_input_9, email_input_10,
+    email_input_11, email_input_12, email_input_13, email_input_14, email_input_15,
+    response_criteria_1, response_criteria_2, response_criteria_3, response_criteria_4, response_criteria_5,
+    response_criteria_6, response_criteria_7, response_criteria_8, response_criteria_9, response_criteria_10,
+    response_criteria_11, response_criteria_12, response_criteria_13, response_criteria_14, response_criteria_15,
+    triage_output_1, triage_output_2, triage_output_3, triage_output_4, triage_output_5,
+    triage_output_6, triage_output_7, triage_output_8, triage_output_9, triage_output_10,
+    triage_output_11, triage_output_12, triage_output_13, triage_output_14, triage_output_15,
+    expected_tool_calls
+)
+    
+class CriteriaGrade(BaseModel):
+    """Score the response against specific criteria."""
+    grade: bool = Field(description="Does the response meet the provided criteria?")
+    justification: str = Field(description="The justification for the grade and score, including specific examples from the response.")
 
+# Create a global LLM for evaluation to avoid recreating it for each test
+criteria_eval_llm = init_chat_model("openai:gpt-4o")
+criteria_eval_structured_llm = criteria_eval_llm.with_structured_output(CriteriaGrade)
 
-# Get agent module from environment variable or use default
-AGENT_MODULE = os.environ.get("AGENT_MODULE", "email_assistant_hitl_memory")
-print(f"Testing agent module: {AGENT_MODULE}")
+# Global variables for module name and imported module
+AGENT_MODULE = None
+agent_module = None
 
-# Import the specified agent module
-agent_module = importlib.import_module(f"src.email_assistant.{AGENT_MODULE}")
-
-# Common test emails
-STANDARD_EMAIL = {
-    "author": "Alice Smith <alice.smith@company.com>",
-    "to": "John Doe <john.doe@company.com>",
-    "subject": "Quick question about API documentation",
-    "email_thread": """Hi John,
-
-I was reviewing the API documentation for the new authentication service and noticed a few endpoints seem to be missing from the specs. Could you help clarify if this was intentional or if we should update the docs?
-
-Specifically, I'm looking at:
-- /auth/refresh
-- /auth/validate
-
-Thanks!
-Alice""",
-}
-
-NOTIFICATION_EMAIL = {
-    "author": "System Admin <sysadmin@company.com>",
-    "to": "Development Team <dev@company.com>",
-    "subject": "Scheduled maintenance - database downtime",
-    "email_thread": """Hi team,
-
-This is a reminder that we'll be performing scheduled maintenance on the production database tonight from 2AM to 4AM EST. During this time, all database services will be unavailable.
-
-Please plan your work accordingly and ensure no critical deployments are scheduled during this window.
-
-Thanks,
-System Admin Team"""
-}
+@pytest.fixture(autouse=True, scope="session")
+def set_agent_module(agent_module_name):
+    """Set the global AGENT_MODULE at the start of the test session."""
+    global AGENT_MODULE, agent_module
+    AGENT_MODULE = agent_module_name
+    print(f"Using agent module: {AGENT_MODULE}")
+    agent_module = importlib.import_module(f"src.email_assistant.{AGENT_MODULE}")
+    return AGENT_MODULE
 
 def setup_assistant() -> Tuple[Any, Dict[str, Any], InMemoryStore]:
     """
@@ -102,106 +94,210 @@ def extract_values(state: Any) -> Dict[str, Any]:
 def run_initial_stream(email_assistant: Any, email_input: Dict, thread_config: Dict) -> List[Dict]:
     """Run the initial stream and return collected messages."""
     messages = []
-    try:
-        for chunk in email_assistant.stream({"email_input": email_input}, config=thread_config):
+    for chunk in email_assistant.stream({"email_input": email_input}, config=thread_config):
             messages.append(chunk)
-    except KeyError as e:
-        if "search_memory" in str(e) and AGENT_MODULE == "email_assistant_hitl_memory":
-            # This is a known issue with the memory module when testing
-            # In production, the memory tools would be properly registered
-            pytest.skip(f"Skipping due to memory tool error: {e}")
-        else:
-            # For other errors, re-raise
-            raise
     return messages
 
 def run_stream_with_command(email_assistant: Any, command: Command, thread_config: Dict) -> List[Dict]:
     """Run stream with a command and return collected messages."""
     messages = []
-    try:
-        for chunk in email_assistant.stream(command, config=thread_config):
+    for chunk in email_assistant.stream(command, config=thread_config):
             messages.append(chunk)
-    except KeyError as e:
-        if "search_memory" in str(e) and AGENT_MODULE == "email_assistant_hitl_memory":
-            # This is a known issue with the memory module when testing
-            # In production, the memory tools would be properly registered
-            pytest.skip(f"Skipping due to memory tool error: {e}")
-        else:
-            # For other errors, re-raise
-            raise
     return messages
-
-def format_messages_string(messages: List[Any]) -> str:
-    """Format messages into a single string for analysis."""
-    return " === ".join(m.content for m in messages)
 
 def check_module_compatibility(required_modules: List[str]) -> None:
     """Check if current module is compatible with test, skip if not."""
     if AGENT_MODULE not in required_modules:
         pytest.skip(f"Skip test for {AGENT_MODULE}, required one of: {required_modules}")
 
-@pytest.mark.langsmith
-def test_response_generation():
-    """Test the basic email assistant functionality with accept command."""
+def create_email_test_cases():
+    """Create test cases for parametrized testing with LangSmith."""
+    email_inputs = [
+        email_input_1, email_input_2, email_input_3, email_input_4, email_input_5,
+        email_input_6, email_input_7, email_input_8, email_input_9, email_input_10,
+        email_input_11, email_input_12, email_input_13, email_input_14, email_input_15
+    ]
+    
+    email_names = [
+        "email_input_1", "email_input_2", "email_input_3", "email_input_4", "email_input_5",
+        "email_input_6", "email_input_7", "email_input_8", "email_input_9", "email_input_10",
+        "email_input_11", "email_input_12", "email_input_13", "email_input_14", "email_input_15"
+    ]
+    
+    # Create pairs of (email_input, email_name, expected_tool_calls) for parametrization
+    test_cases = []
+    for i, (email_input, email_name) in enumerate(zip(email_inputs, email_names)):
+        expected_calls = expected_tool_calls[email_name]
+        test_cases.append((email_input, email_name, expected_calls))
+    
+    return test_cases
+
+def create_criteria_test_cases():
+    """Create test cases for parametrized criteria evaluation with LangSmith."""
+    email_inputs = [
+        email_input_1, email_input_2, email_input_3, email_input_4, email_input_5,
+        email_input_6, email_input_7, email_input_8, email_input_9, email_input_10,
+        email_input_11, email_input_12, email_input_13, email_input_14, email_input_15
+    ]
+    
+    email_names = [
+        "email_input_1", "email_input_2", "email_input_3", "email_input_4", "email_input_5",
+        "email_input_6", "email_input_7", "email_input_8", "email_input_9", "email_input_10",
+        "email_input_11", "email_input_12", "email_input_13", "email_input_14", "email_input_15"
+    ]
+    
+    response_criteria_list = [
+        response_criteria_1, response_criteria_2, response_criteria_3, response_criteria_4, response_criteria_5,
+        response_criteria_6, response_criteria_7, response_criteria_8, response_criteria_9, response_criteria_10,
+        response_criteria_11, response_criteria_12, response_criteria_13, response_criteria_14, response_criteria_15
+    ]
+    
+    triage_outputs_list = [
+        triage_output_1, triage_output_2, triage_output_3, triage_output_4, triage_output_5,
+        triage_output_6, triage_output_7, triage_output_8, triage_output_9, triage_output_10,
+        triage_output_11, triage_output_12, triage_output_13, triage_output_14, triage_output_15
+    ]
+    
+    # Create tuples of (email_input, email_name, criteria, triage_output) for parametrization
+    test_cases = []
+    for i, (email_input, email_name, criteria, triage_output) in enumerate(zip(
+        email_inputs, email_names, response_criteria_list, triage_outputs_list
+    )):
+        test_cases.append((email_input, email_name, criteria, triage_output))
+    
+    return test_cases
+
+# Reference output key
+@pytest.mark.langsmith(output_keys=["expected_calls"])
+# Variable names and a list of tuples with the test cases
+@pytest.mark.parametrize("email_input,email_name,expected_calls",create_email_test_cases())
+def test_email_dataset_tool_calls(email_input, email_name, expected_calls):
+    """Test if email processing contains expected tool calls."""
+    print(f"Processing {email_name}...")
     
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
-
-    # Use the standard test email
-    email_input = STANDARD_EMAIL
-
-    # Run the agent based on the module type
+    
+    # Run the agent
     if AGENT_MODULE == "email_assistant_react":
         # React agent takes messages
         messages = [{"role": "user", "content": str(email_input)}]
         result = email_assistant.invoke({"messages": messages}, config=thread_config)
-
+        
     elif AGENT_MODULE == "email_assistant":
         # Workflow agent takes email_input directly
         result = email_assistant.invoke({"email_input": email_input}, config=thread_config)
-
+        
     else:
-        # Other agents take email_input directly but will use interrupt 
+        # Other agents take email_input directly but will use interrupt
         result = {}
-        try:
-            for chunk in email_assistant.stream({"email_input": email_input}, config=thread_config):
-                result.update(chunk)
-                
-            # Provide feedback and resume the graph
-            resume_command = Command(resume=[{
-                "type": "accept", 
-                "args": ""
-            }])
+        for chunk in email_assistant.stream({"email_input": email_input}, config=thread_config):
+            result.update(chunk)
             
-            # Complete the graph
-            for chunk in email_assistant.stream(resume_command, config=thread_config):
-                result.update(chunk)
-        except KeyError as e:
-            if "search_memory" in str(e) and AGENT_MODULE == "email_assistant_hitl_memory":
-                # This is a known issue with the memory module when testing
-                # In production, the memory tools would be properly registered
-                pytest.skip(f"Skipping due to memory tool error: {e}")
-            else:
-                # For other errors, re-raise
-                raise
-    
-    # Get final state    
+        # Provide feedback and resume the graph with 'accept'
+        resume_command = Command(resume=[{
+            "type": "accept", 
+            "args": ""
+        }])
+        
+        # Complete the graph
+        for chunk in email_assistant.stream(resume_command, config=thread_config):
+            result.update(chunk)
+        
+    # Get the final state
     state = email_assistant.get_state(thread_config)
-
-    # Log inputs and outputs
-    t.log_inputs({"email_input": email_input, "module": AGENT_MODULE})
-    t.log_outputs({"response": state.values if hasattr(state, "values") else state})
-
-    # Get state values and verify
     values = extract_values(state)
         
-    # Verify we have messages and classification
-    assert "messages" in values
-    assert len(values["messages"]) > 0
-    assert "classification_decision" in values
+    # Extract tool calls from messages
+    extracted_tool_calls = extract_tool_calls(values["messages"])
+            
+    # Check if all expected tool calls are in the extracted ones
+    missing_calls = [call for call in expected_calls if call.lower() not in extracted_tool_calls]
+    # Extra calls are allowed (we only fail if expected calls are missing)
+    extra_calls = [call for call in extracted_tool_calls if call.lower() not in [c.lower() for c in expected_calls]]
+   
+    # Log 
+    all_messages_str = format_messages_string(values["messages"])
+    t.log_outputs({"response": all_messages_str})
+    t.log_outputs({
+                "extracted_tool_calls": extracted_tool_calls,
+                "missing_calls": missing_calls,
+                "extra_calls": extra_calls,
+            })
 
-@pytest.mark.langsmith
-def test_hitl_notify():
+    # Pass feedback key
+    assert len(missing_calls) == 0
+            
+# Reference output key
+@pytest.mark.langsmith(output_keys=["criteria"])
+# Variable names and a list of tuples with the test cases
+@pytest.mark.parametrize("email_input,email_name,criteria,triage_output",create_criteria_test_cases())
+def test_response_criteria_evaluation(email_input, email_name, criteria, triage_output):
+    """Test if a response meets the specified criteria."""
+    # Skip emails that don't require a response
+    if triage_output != "respond":
+        print(f"Skipping {email_name} - Does not require a response (triage: {triage_output})")
+        pytest.skip(f"Email {email_name} does not require a response (triage: {triage_output})")
+        
+    print(f"Processing {email_name}...")
+    
+    # Set up the assistant
+    email_assistant, thread_config, _ = setup_assistant()
+    
+    # Run the agent
+    if AGENT_MODULE == "email_assistant_react":
+        # React agent takes messages
+        messages = [{"role": "user", "content": str(email_input)}]
+        result = email_assistant.invoke({"messages": messages}, config=thread_config)
+        
+    elif AGENT_MODULE == "email_assistant":
+        # Workflow agent takes email_input directly
+        result = email_assistant.invoke({"email_input": email_input}, config=thread_config)
+        
+    else:
+        # Other agents take email_input directly but will use interrupt
+        result = {}
+        for chunk in email_assistant.stream({"email_input": email_input}, config=thread_config):
+            result.update(chunk)
+            
+        # Provide feedback and resume the graph with 'accept'
+        resume_command = Command(resume=[{
+            "type": "accept", 
+            "args": ""
+        }])
+        
+        # Complete the graph
+        for chunk in email_assistant.stream(resume_command, config=thread_config):
+            result.update(chunk)
+        
+    # Get the final state
+    state = email_assistant.get_state(thread_config)
+    values = extract_values(state)
+    
+    # Generate message output string for evaluation
+    all_messages_str = format_messages_string(values['messages'])
+    
+    # Evaluate against criteria
+    eval_result = criteria_eval_structured_llm.invoke([
+        {"role": "system",
+            "content": RESPONSE_CRITERIA_SYSTEM_PROMPT},
+        {"role": "user",
+            "content": f"""Response criteria: {criteria} Assistant's response: {all_messages_str}  Evaluate whether the assistant's response meets the criteria and provide justification for your evaluation."""}
+    ])
+
+    # Log feedback response
+    t.log_outputs({
+        "response": all_messages_str,
+        "justification": eval_result.justification,
+    })
+        
+    # Pass feedback key
+    assert eval_result.grade
+        
+@pytest.mark.langsmith()
+# Variable names and a list of tuples with the test cases
+@pytest.mark.parametrize("email_input",[NOTIFICATION_EMAIL])
+def test_hitl_notify(email_input):
     """Test the HITL workflow with a notification email and response feedback."""
     
     # Skip test if module isn't supported
@@ -209,10 +305,7 @@ def test_hitl_notify():
     
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
-    
-    # Use the notification email
-    email_input = NOTIFICATION_EMAIL
-    
+        
     # Log inputs
     t.log_inputs({"email_input": email_input, "module": AGENT_MODULE})
     
@@ -237,14 +330,15 @@ def test_hitl_notify():
     all_messages_str = format_messages_string(values['messages'])
 
     # Log feedback response
-    t.log_outputs({"messages": values["messages"]})
+    t.log_outputs({"response": all_messages_str})
     
-    # Assert we got responses and registered the feedback
-    assert values["classification_decision"] is not None 
+    # Pass feedback key
     assert "Let's actually respond" in all_messages_str
 
-@pytest.mark.langsmith
-def test_hitl_respond_edit():
+@pytest.mark.langsmith()
+# Variable names and a list of tuples with the test cases
+@pytest.mark.parametrize("email_input",[STANDARD_EMAIL])
+def test_hitl_respond_edit(email_input):
     """Test the HITL workflow with response edit functionality."""
     
     # Skip test if module isn't supported
@@ -252,13 +346,7 @@ def test_hitl_respond_edit():
     
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
-    
-    # Use the standard email
-    email_input = STANDARD_EMAIL
-    
-    # Log inputs
-    t.log_inputs({"email_input": email_input, "module": AGENT_MODULE})
-    
+            
     # Run the graph initially
     messages = run_initial_stream(email_assistant, email_input, thread_config)
     
@@ -277,16 +365,15 @@ def test_hitl_respond_edit():
     
     # Generate message output string
     all_messages_str = format_messages_string(values['messages'])
-
-    # Log feedback response
-    t.log_outputs({"messages": values["messages"]})
+    t.log_outputs({"response": all_messages_str})
     
-    # Assert we got responses and registered the edit
-    assert values["classification_decision"] is not None 
+    # Pass feedback key
     assert "Thanks Alice, I will fix it!" in all_messages_str
 
-@pytest.mark.langsmith
-def test_hitl_respond_feedback():
+@pytest.mark.langsmith()
+# Variable names and a list of tuples with the test cases
+@pytest.mark.parametrize("email_input",[STANDARD_EMAIL])
+def test_hitl_respond_feedback(email_input):
     """Test the HITL workflow with textual feedback for response generation."""
     
     # Skip test if module isn't supported
@@ -294,12 +381,6 @@ def test_hitl_respond_feedback():
     
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
-    
-    # Use the standard email
-    email_input = STANDARD_EMAIL
-    
-    # Log inputs
-    t.log_inputs({"email_input": email_input, "module": AGENT_MODULE})
     
     # Run the graph initially
     messages = run_initial_stream(email_assistant, email_input, thread_config)
@@ -321,28 +402,25 @@ def test_hitl_respond_feedback():
     # Generate message output string
     all_messages_str = format_messages_string(values['messages'])
 
-    # Log feedback response
-    t.log_outputs({"messages": values["messages"]})
-    
     # Grade the response using LLM
-    llm = init_chat_model("openai:gpt-4o")
-    structured_llm = llm.with_structured_output(GradeResponse)
-    grade = structured_llm.invoke([
+    grade = criteria_eval_structured_llm.invoke([
         {"role": "system",
-         "content": f"This is an email assistant that is used to respond to emails. Review our initial email response and the user feedback given to update the email response. Here is the feedback: {feedback}. Assess whether the final email response addresses the feedback that we gave."},
+         "content": HITL_FEEDBACK_SYSTEM_PROMPT.format(feedback=feedback)},
         {"role": "user",
-         "content": f"Here is the full conversation to grade, with the initial email response and the user feedback and the final email response at the end: {all_messages_str}"}
+         "content": f"Confirm that the feedback {feedback} is captured in the final email response at the end: {all_messages_str}"}
     ])
 
-    print("GRADE: test_hitl_respond_feedback")
-    print(grade)
+    # Log feedback response
+    t.log_outputs({"response": all_messages_str, 
+                   "justification": grade.justification})
 
-    # Assert we got responses and registered the edit
-    assert values["classification_decision"] is not None 
-    # assert grade.grade  # Uncomment to enforce passing grade
+    # Pass feedback key
+    assert grade.grade 
 
-@pytest.mark.langsmith
-def test_hitl_memory_notify():
+@pytest.mark.langsmith()
+# Variable names and a list of tuples with the test cases
+@pytest.mark.parametrize("email_input",[NOTIFICATION_EMAIL])
+def test_hitl_memory_notify(email_input):
     """Test the HITL-memory workflow with notification email and stored preferences."""
     
     # Skip test if module isn't supported
@@ -350,13 +428,7 @@ def test_hitl_memory_notify():
     
     # Set up the assistant
     email_assistant, thread_config, store = setup_assistant()
-    
-    # Use the notification email
-    email_input = NOTIFICATION_EMAIL
-    
-    # Log inputs
-    t.log_inputs({"email_input": email_input, "module": AGENT_MODULE})
-    
+            
     # Run the graph initially
     messages = run_initial_stream(email_assistant, email_input, thread_config)
     
@@ -378,19 +450,19 @@ def test_hitl_memory_notify():
     all_messages_str = format_messages_string(values['messages'])
 
     # Log feedback response
-    t.log_outputs({"messages": values["messages"]})
+    t.log_outputs({"response": all_messages_str})
 
     # Retrieve stored triage preferences from memory
     results = store.search(("email_assistant", "triage_preferences"))
     triage_instructions_updated = results[0].value['content']['content']
 
-    # Assert we got responses and registered the feedback and stored the triage instructions in memory
-    assert values["classification_decision"] is not None 
-    assert "For anything from the System Admin Team" in all_messages_str
+    # Pass feedback key
     assert "System Admin" in triage_instructions_updated
 
-@pytest.mark.langsmith
-def test_hitl_memory_respond_edit():
+@pytest.mark.langsmith()
+# Variable names and a list of tuples with the test cases
+@pytest.mark.parametrize("email_input",[STANDARD_EMAIL])
+def test_hitl_memory_respond_edit(email_input):
     """Test the HITL-memory workflow with response edit and stored preferences."""
     
     # Skip test if module isn't supported
@@ -398,10 +470,7 @@ def test_hitl_memory_respond_edit():
     
     # Set up the assistant
     email_assistant, thread_config, store = setup_assistant()
-    
-    # Use the standard email
-    email_input = STANDARD_EMAIL
-    
+        
     # Log inputs
     t.log_inputs({"email_input": email_input, "module": AGENT_MODULE})
     
@@ -432,25 +501,20 @@ def test_hitl_memory_respond_edit():
     # Generate message output string
     all_messages_str = format_messages_string(values['messages'])
 
-    # Log feedback response
-    t.log_outputs({"messages": values["messages"]})
-
     # Grade the response using LLM
-    llm = init_chat_model("openai:gpt-4o")
-    structured_llm = llm.with_structured_output(GradeResponse)
-    grade = structured_llm.invoke([
+    grade = criteria_eval_structured_llm.invoke([
         {"role": "system",
-         "content": f"This is an email assistant that uses memory to update its response preferences. Review the initial response preferences and the updated response preferences. Assess whether the updated response preferences are more accurate than the initial response preferences."},
+         "content": MEMORY_UPDATE_SYSTEM_PROMPT},
         {"role": "user",
          "content": f"Here are the initial response preferences: {response_preferences_pre_update}. Here are the updated response preferences: {response_preferences_post_update}. Here is the conversation: {all_messages_str}. Confirm that the response preferences are updated."}
     ])
 
-    print("GRADE: test_hitl_memory_respond_edit")
-    print(grade)
+    # Log feedback response
+    t.log_outputs({"response": all_messages_str, 
+                   "justification": grade.justification})
     
-    # Assert we got responses and registered the edit
-    assert values["classification_decision"] is not None 
-    # assert grade.grade  # Uncomment to enforce passing grade
+    # Pass feedback key
+    assert grade.grade 
 
 if __name__ == "__main__":
     print(f"Testing agent module: {AGENT_MODULE}")

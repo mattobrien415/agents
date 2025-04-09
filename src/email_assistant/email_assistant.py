@@ -1,5 +1,7 @@
 from typing import Literal
 
+from pydantic import BaseModel
+
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
@@ -38,8 +40,13 @@ def check_calendar_availability(day: str) -> str:
     # Placeholder response - in real app would check actual calendar
     return f"Available times on {day}: 9:00 AM, 2:00 PM, 4:00 PM"
 
+@tool
+class Done(BaseModel):
+      """E-mail has been sent."""
+      content: str
+
 # Baseline agent prompt
-tools = [write_email, schedule_meeting, check_calendar_availability]
+tools = [write_email, schedule_meeting, check_calendar_availability, Done]
 
 # Create response agent
 agent = create_react_agent(

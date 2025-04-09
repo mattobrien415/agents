@@ -1,5 +1,7 @@
 from typing import Literal
 
+from pydantic import BaseModel
+
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
@@ -38,8 +40,13 @@ def triage_email(category: Literal["ignore", "notify", "respond"]) -> str:
     """Triage an email into one of three categories: ignore, notify, respond."""
     return f"Classification Decision: {category}"
 
+@tool
+class Done(BaseModel):
+      """E-mail has been sent."""
+      content: str
+
 # Agent tools default
-tools = [write_email, schedule_meeting, check_calendar_availability, triage_email]
+tools = [write_email, schedule_meeting, check_calendar_availability, triage_email, Done]
 tools_by_name = {tool.name: tool for tool in tools}
 
 # Bind tools to LLM
