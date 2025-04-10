@@ -5,16 +5,10 @@ import os
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-from openevals.llm import create_llm_as_judge
-from eval.prompt import TRIAGE_CLASSIFICATION_PROMPT
 from eval.email_dataset import examples_triage
 
 from src.email_assistant.email_assistant import email_assistant
-
-# Fixed import to use the renamed variable
 from src.email_assistant.email_assistant_react import email_assistant as email_assistant_react
-
-from src.email_assistant.utils import format_messages
 
 # Client 
 client = Client()
@@ -135,7 +129,7 @@ workflow_score = df_workflow[f'feedback.classification_evaluator'].mean() if f'f
 
 # Create a bar plot comparing the two models
 plt.figure(figsize=(10, 6))
-models = ['ReAct Agent', 'Workflow Agent']
+models = ['Tool Calling Agent', 'Agentic Workflow']
 scores = [react_score, workflow_score]
 
 # Create bars with distinct colors
@@ -166,6 +160,6 @@ plt.savefig(plot_path)
 plt.close()
 
 print(f"\nEvaluation visualization saved to: {plot_path}")
-print(f"ReAct Agent Score: {react_score:.2f}")
-print(f"Workflow Agent Score: {workflow_score:.2f}")
+print(f"Tool Calling Agent Score: {react_score:.2f}")
+print(f"Agentic Workflow Score: {workflow_score:.2f}")
 

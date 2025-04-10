@@ -281,26 +281,6 @@ triage_output_13 = "respond"
 triage_output_14 = "ignore"
 triage_output_15 = "respond"
 
-# Define expected tool calls for each email based on content analysis
-# Options: write_email, schedule_meeting, check_calendar_availability, done
-expected_tool_calls = {
-    "email_input_1": ["write_email", "done"],  # API documentation question
-    "email_input_2": [],  # Newsletter notification - no action needed
-    "email_input_3": [],  # System maintenance notification - no action needed
-    "email_input_4": ["check_calendar_availability", "schedule_meeting", "write_email", "done"],  # Tax call scheduling
-    "email_input_5": ["done"],  # Expense report reminder - notification only
-    "email_input_6": ["write_email", "done"],  # Conference invitation - needs response
-    "email_input_7": ["write_email", "done"],  # Document review request
-    "email_input_8": ["write_email", "done"],  # Swimming class registration
-    "email_input_9": [],  # GitHub PR comment - notification only
-    "email_input_10": ["check_calendar_availability", "schedule_meeting", "write_email", "done"],  # Planning meeting
-    "email_input_11": [],  # AWS alert - notification only
-    "email_input_12": [],  # Subscription renewal - no action needed
-    "email_input_13": ["write_email", "done"],  # Doctor appointment reminder
-    "email_input_14": [],  # Social media notification - no action needed
-    "email_input_15": ["check_calendar_availability", "schedule_meeting", "write_email", "done"]  # Joint presentation
-}
-
 # Response criteria (when applicable)
 response_criteria_1 = "Should address the missing API endpoints (/auth/refresh, /auth/validate) and offer to update the documentation or clarify whether their absence was intentional."
 response_criteria_2 = "No response needed - this is a newsletter notification that should be ignored or simply marked as read."
@@ -442,4 +422,49 @@ examples_response = [
       "inputs": {"email_input": email_input_15},
       "outputs": {"criteria": response_criteria_15},
   },
+]
+
+email_inputs = [
+        email_input_1, email_input_2, email_input_3, email_input_4, email_input_5,
+        email_input_6, email_input_7, email_input_8, email_input_9, email_input_10,
+        email_input_11, email_input_12, email_input_13, email_input_14, email_input_15
+    ]
+
+email_names = [
+    "email_input_1", "email_input_2", "email_input_3", "email_input_4", "email_input_5",
+    "email_input_6", "email_input_7", "email_input_8", "email_input_9", "email_input_10",
+    "email_input_11", "email_input_12", "email_input_13", "email_input_14", "email_input_15"
+]
+
+response_criteria_list = [
+    response_criteria_1, response_criteria_2, response_criteria_3, response_criteria_4, response_criteria_5,
+    response_criteria_6, response_criteria_7, response_criteria_8, response_criteria_9, response_criteria_10,
+    response_criteria_11, response_criteria_12, response_criteria_13, response_criteria_14, response_criteria_15
+]
+
+triage_outputs_list = [
+    triage_output_1, triage_output_2, triage_output_3, triage_output_4, triage_output_5,
+    triage_output_6, triage_output_7, triage_output_8, triage_output_9, triage_output_10,
+    triage_output_11, triage_output_12, triage_output_13, triage_output_14, triage_output_15
+]
+
+# Define expected tool calls for each email based on content analysis
+# Options: write_email, schedule_meeting, check_calendar_availability, done
+# Expected tool calls list that aligns with email_inputs, email_names, etc.
+expected_tool_calls = [
+    ["write_email", "done"],                                                 # email_input_1: API documentation question
+    [],                                                                      # email_input_2: Newsletter notification - no action needed
+    [],                                                                      # email_input_3: System maintenance notification - no action needed
+    ["check_calendar_availability", "schedule_meeting", "write_email", "done"], # email_input_4: Tax call scheduling
+    ["done"],                                                                # email_input_5: Expense report reminder - notification only
+    ["write_email", "done"],                                                 # email_input_6: Conference invitation - needs response
+    ["write_email", "done"],                                                 # email_input_7: Document review request
+    ["write_email", "done"],                                                 # email_input_8: Swimming class registration
+    [],                                                                      # email_input_9: GitHub PR comment - notification only
+    ["check_calendar_availability", "schedule_meeting", "write_email", "done"], # email_input_10: Planning meeting
+    [],                                                                      # email_input_11: AWS alert - notification only
+    [],                                                                      # email_input_12: Subscription renewal - no action needed
+    ["write_email", "done"],                                                 # email_input_13: Doctor appointment reminder
+    [],                                                                      # email_input_14: Social media notification - no action needed
+    ["check_calendar_availability", "schedule_meeting", "write_email", "done"]  # email_input_15: Joint presentation
 ]

@@ -5,6 +5,9 @@ import sys
 import argparse
 
 def main():
+    # LangSmith suite / project name
+    langsmith_project = "E-Mail Assistant Testing: Interrupt Conference"
+
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run tests for email assistant implementations")
     parser.add_argument("--rich-output", action="store_true", help="[DEPRECATED] LangSmith output is now enabled by default")
@@ -45,10 +48,9 @@ def main():
         print(f"\nRunning tests for {implementation}...")
         
         # Set up LangSmith environment for this implementation
-        os.environ["LANGSMITH_PROJECT"] = f"E-Mail Assistant Testing"
-        os.environ["LANGSMITH_TEST_SUITE"] = f"E-Mail Assistant Testing"
-        experiment_name = args.experiment_name or f"{implementation}"
-        os.environ["LANGSMITH_EXPERIMENT"] = experiment_name
+        os.environ["LANGSMITH_PROJECT"] = langsmith_project
+        os.environ["LANGSMITH_TEST_SUITE"] = langsmith_project
+        
         # Ensure tracing is enabled
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         
@@ -59,13 +61,32 @@ def main():
         module_param = f"--agent-module={implementation}"
         pytest_options.append(module_param)
         
-        # Then run pytest to load the tests
-        cmd = ["python", "-m", "pytest", "tests/test_email_assistant.py"] + pytest_options
-        subprocess.run(cmd)
+        # Determine which test files to run based on implementation
+        test_files = ["tests/test_response.py"]  # All implementations run response tests
         
+        # HITL tests for email_assistant_hitl and email_assistant_hitl_memory
+        if implementation in ["email_assistant_hitl", "email_assistant_hitl_memory"]:
+            test_files.append("tests/test_hitl.py")
+        
+        # Memory tests only for email_assistant_hitl_memory
+        if implementation == "email_assistant_hitl_memory":
+            test_files.append("tests/test_memory.py")
+            
+        # Run each test file
+        print(f"   Project: {langsmith_project}")
         print(f"\nℹ️ Test results for {implementation} are being logged to LangSmith")
-        print(f"   Project: E-Mail Assistant Testing")
-        print(f"   Experiment: {experiment_name}")
-
+        for test_file in test_files:
+            print(f"\nRunning {test_file} for {implementation}...")
+            experiment_name = f"Test: {test_file.split('/')[-1]} | Agent: {implementation}"
+            print(f"   Experiment: {experiment_name}")
+            os.environ["LANGSMITH_EXPERIMENT"] = experiment_name
+            cmd = ["python", "-m", "pytest", test_file] + pytest_options
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            # Print test output
+            print(result.stdout)
+            if result.stderr:
+                print(result.stderr)
+                
 if __name__ == "__main__":
     sys.exit(main() or 0)

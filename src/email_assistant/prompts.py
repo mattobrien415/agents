@@ -193,7 +193,13 @@ I'm Lance, a software engineer at LangChain.
 
 # Default response preferences 
 default_response_preferences = """
-Use professional and concise language.
+Use professional and concise language. If the e-mail mentions a deadline, make sure to include that in the response.
+
+When responding to technical questions about API documentation or missing endpoints:
+- Acknowledge the specific endpoints mentioned in the query
+- Clearly state whether you will investigate if the omission was intentional or if documentation needs updating
+- Offer to update documentation or provide clarification as appropriate
+- Provide an estimated timeline for when you'll have more information
 """
 
 # Default calendar preferences 
@@ -223,4 +229,6 @@ Emails that are worth responding to:
 - Critical bug reports related to team's projects
 - Requests from management requiring acknowledgment
 - Client inquiries about project status or features
+- Personal reminders related to family (wife / daughter)
+- Personal reminder related to self-care (doctor appointments, etc)
 """

@@ -9,7 +9,6 @@ dependencies = [
     "langchain-openai",
     "langgraph",
     "langmem>=0.0.20",
-    "openevals",
     "langsmith[pytest]>=0.3.4",
     "pandas",
     "matplotlib",
