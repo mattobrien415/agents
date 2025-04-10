@@ -11,9 +11,6 @@ from src.email_assistant.schemas import State
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph import MessagesState
 
-# Initialize the LLM
-llm = init_chat_model("openai:gpt-4o")
-
 # Agent tools 
 @tool
 def write_email(to: str, subject: str, content: str) -> str:
@@ -43,11 +40,14 @@ def triage_email(category: Literal["ignore", "notify", "respond"]) -> str:
 @tool
 class Done(BaseModel):
       """E-mail has been sent."""
-      content: str
+      done: bool
 
 # Agent tools default
 tools = [write_email, schedule_meeting, check_calendar_availability, triage_email, Done]
 tools_by_name = {tool.name: tool for tool in tools}
+
+# Initialize the LLM, enforcing tool use (of any available tools)
+llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
 
 # Bind tools to LLM
 llm_with_tools = llm.bind_tools(tools)
@@ -104,12 +104,15 @@ def tool_handler(state: State):
 
 # Conditional edge function
 def should_continue(state: State) -> Literal["tool_handler", END]:
-    """Route to tool handler if tool call made, otherwise end"""
+    """Route to tool handler, or end if Done tool called"""
     messages = state["messages"]
     last_message = messages[-1]
     if last_message.tool_calls:
-        return "tool_handler"
-    return END
+        for tool_call in last_message.tool_calls: 
+            if tool_call["name"] == "Done":
+                return END
+            else:
+                return "tool_handler"
 
 # Build workflow
 overall_workflow = StateGraph(State,input=MessagesState)

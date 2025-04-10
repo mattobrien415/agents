@@ -13,12 +13,6 @@ from email_assistant.utils import parse_email, format_email_markdown
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
 
-# Initialize the LLM
-llm = init_chat_model("openai:gpt-4o")
-
-# We'll use structured output to generate classification results
-llm_router = llm.with_structured_output(RouterSchema) 
-
 # Agent tools 
 @tool
 def write_email(to: str, subject: str, content: str) -> str:
@@ -43,19 +37,82 @@ def check_calendar_availability(day: str) -> str:
 @tool
 class Done(BaseModel):
       """E-mail has been sent."""
-      content: str
+      done: bool
 
 # Baseline agent prompt
 tools = [write_email, schedule_meeting, check_calendar_availability, Done]
+tools_by_name = {tool.name: tool for tool in tools}
 
-# Create response agent
-agent = create_react_agent(
-    llm,
-    tools=tools,
-    prompt= agent_system_prompt.format(background=default_background,
+# Initialize the LLM for use with router / structured output
+llm = init_chat_model("openai:gpt-4o", temperature=0.0)
+llm_router = llm.with_structured_output(RouterSchema) 
+# Initialize the LLM, enforcing tool use (of any available tools) for agent
+llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
+llm_with_tools = llm.bind_tools(tools)
+
+# Nodes
+def llm_call(state: State):
+    """LLM decides whether to call a tool or not"""
+
+    return {
+        "messages": [
+            llm_with_tools.invoke(
+                [
+                    {"role": "system", "content": agent_system_prompt.format(background=default_background,
                                        response_preferences=default_response_preferences, 
-                                       cal_preferences=default_cal_preferences),
+                                       cal_preferences=default_cal_preferences)
+                    },
+                    
+                ]
+                + state["messages"]
+            )
+        ]
+    }
+
+def tool_node(state: dict):
+    """Performs the tool call"""
+
+    result = []
+    for tool_call in state["messages"][-1].tool_calls:
+        tool = tools_by_name[tool_call["name"]]
+        observation = tool.invoke(tool_call["args"])
+        result.append({"role": "tool", "content" : observation, "tool_call_id": tool_call["id"]})
+    return {"messages": result}
+
+# Conditional edge function
+def should_continue(state: State) -> Literal["Action", END]:
+    """Route to Action, or end if Done tool called"""
+    messages = state["messages"]
+    last_message = messages[-1]
+    if last_message.tool_calls:
+        for tool_call in last_message.tool_calls: 
+            if tool_call["name"] == "Done":
+                return END
+            else:
+                return "Action"
+
+# Build workflow
+agent_builder = StateGraph(State)
+
+# Add nodes
+agent_builder.add_node("llm_call", llm_call)
+agent_builder.add_node("environment", tool_node)
+
+# Add edges to connect nodes
+agent_builder.add_edge(START, "llm_call")
+agent_builder.add_conditional_edges(
+    "llm_call",
+    should_continue,
+    {
+        # Name returned by should_continue : Name of next node to visit
+        "Action": "environment",
+        END: END,
+    },
 )
+agent_builder.add_edge("environment", "llm_call")
+
+# Compile the agent
+agent = agent_builder.compile()
 
 def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]:
     """Analyze email content to decide if we should respond, notify, or ignore.
@@ -127,7 +184,7 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
 
 # Build workflow
 overall_workflow = (
-    StateGraph(State,input=StateInput)
+    StateGraph(State, input=StateInput)
     .add_node(triage_router)
     .add_node("response_agent", agent)
     .add_edge(START, "triage_router")

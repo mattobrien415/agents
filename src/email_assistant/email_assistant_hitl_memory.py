@@ -43,7 +43,7 @@ class Question(BaseModel):
 @tool
 class Done(BaseModel):
       """E-mail has been sent."""
-      content: str
+      done: bool
     
 # Memory search tools for reading from memory Store 
 response_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "response_preferences"), name="response_preferences")
@@ -66,11 +66,12 @@ tools = [
 
 tools_by_name = {tool.name: tool for tool in tools}
 
-# Initialize the LLM
-llm = init_chat_model("openai:gpt-4o")
 
-# Router LLM 
+# Initialize the LLM for use with router / structured output
+llm = init_chat_model("openai:gpt-4o", temperature=0.0)
 llm_router = llm.with_structured_output(RouterSchema) 
+# Initialize the LLM, enforcing tool use (of any available tools) for agent
+llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
 llm_with_tools = llm.bind_tools(tools)
 
 # Feedback memory managers for writing to memory Store 
@@ -460,14 +461,17 @@ def interrupt_handler(state: State, store: BaseStore):
 
     return {"messages": result}
 
-# Conditional edge functions
+# Conditional edge function
 def should_continue(state: State) -> Literal["interrupt_handler", END]:
-    """Route to interrupt handler if tool call made"""
+    """Route to tool handler, or end if Done tool called"""
     messages = state["messages"]
     last_message = messages[-1]
     if last_message.tool_calls:
-        return "interrupt_handler"
-    return END
+        for tool_call in last_message.tool_calls: 
+            if tool_call["name"] == "Done":
+                return END
+            else:
+                return "interrupt_handler"
 
 # Build workflow
 agent_builder = StateGraph(State)
