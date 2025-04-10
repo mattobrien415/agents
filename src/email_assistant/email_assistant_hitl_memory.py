@@ -39,6 +39,11 @@ def check_calendar_availability(day: str) -> str:
 class Question(BaseModel):
       """Question to ask user."""
       content: str
+
+@tool
+class Done(BaseModel):
+      """E-mail has been sent."""
+      content: str
     
 # Memory search tools for reading from memory Store 
 response_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "response_preferences"), name="response_preferences")
@@ -55,7 +60,8 @@ tools = [
     response_preferences_tool, 
     cal_preferences_tool, 
     background_tool,
-    triage_preferences_tool
+    triage_preferences_tool,
+    Done
 ]
 
 tools_by_name = {tool.name: tool for tool in tools}

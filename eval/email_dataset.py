@@ -1,5 +1,37 @@
 """Email evaluation dataset with ground truth classifications."""
 
+# Common reply email
+STANDARD_EMAIL = {
+    "author": "Alice Smith <alice.smith@company.com>",
+    "to": "John Doe <john.doe@company.com>",
+    "subject": "Quick question about API documentation",
+    "email_thread": """Hi John,
+
+I was reviewing the API documentation for the new authentication service and noticed a few endpoints seem to be missing from the specs. Could you help clarify if this was intentional or if we should update the docs?
+
+Specifically, I'm looking at:
+- /auth/refresh
+- /auth/validate
+
+Thanks!
+Alice""",
+}
+
+# Common notification email
+NOTIFICATION_EMAIL = {
+    "author": "System Admin <sysadmin@company.com>",
+    "to": "Development Team <dev@company.com>",
+    "subject": "Scheduled maintenance - database downtime",
+    "email_thread": """Hi team,
+
+This is a reminder that we'll be performing scheduled maintenance on the production database tonight from 2AM to 4AM EST. During this time, all database services will be unavailable.
+
+Please plan your work accordingly and ensure no critical deployments are scheduled during this window.
+
+Thanks,
+System Admin Team"""
+}
+
 # Dataset examples
 email_input_1 = {
     "author": "Alice Smith <alice.smith@company.com>",
@@ -249,22 +281,42 @@ triage_output_13 = "respond"
 triage_output_14 = "ignore"
 triage_output_15 = "respond"
 
-# End-to-end response outputs (when applicable)
-response_output_1 = "I've reviewed the API documentation and confirmed the missing endpoints. I'll add the /auth/refresh and /auth/validate endpoints to the documentation and send you the updated version."
-response_output_2 = "No response is needed. For evaluation purposes, just confirm that the agent is to ignore."
-response_output_3 = "No response is needed. For evaluation purposes, just confirm that the agent is to notify."
-response_output_4 = "I set up some time to discuss tax planning strategies for 30 minutes. Looking forward to our call."
-response_output_5 = "No response is needed. For evaluation purposes, just confirm that the agent is to notify."
-response_output_6 = "Thank you for the invitation to TechConf 2025. I'm interested in attending and would like to take advantage of the early bird registration. Could you provide more details about the AI and ML workshops specifically?"
-response_output_7 = "I'll review the technical specifications section of the Henderson project proposal (pages 15-20) and provide feedback by Thursday. Is there anything specific you'd like me to focus on?"
-response_output_8 = "I'd like to register my daughter for the intermediate swimming class on Tuesdays and Thursdays at 5PM. Please let me know what information you need to complete the registration."
-response_output_9 = "No response is needed. For evaluation purposes, just confirm that the agent is to notify."
-response_output_10 = "I set up time for the quarterly planning meeting for 30 minutes."
-response_output_11 = "No response is needed. For evaluation purposes, just confirm that the agent is to notify."
-response_output_12 = "No response is needed. For evaluation purposes, just confirm that the agent is to ignore."
-response_output_13 = "Thank you for the reminder about my annual checkup. I'll call your office this week to schedule an appointment."
-response_output_14 = "No response is needed. For evaluation purposes, just confirm that the agent is to ignore."
-response_output_15 = "I'd be happy to collaborate on the presentation. I scheduled a meeting for 30 minutes to discuss the technical architecture section. I'll review the slides you've prepared before then."
+# Define expected tool calls for each email based on content analysis
+# Options: write_email, schedule_meeting, check_calendar_availability, done
+expected_tool_calls = {
+    "email_input_1": ["write_email", "done"],  # API documentation question
+    "email_input_2": [],  # Newsletter notification - no action needed
+    "email_input_3": [],  # System maintenance notification - no action needed
+    "email_input_4": ["check_calendar_availability", "schedule_meeting", "write_email", "done"],  # Tax call scheduling
+    "email_input_5": ["done"],  # Expense report reminder - notification only
+    "email_input_6": ["write_email", "done"],  # Conference invitation - needs response
+    "email_input_7": ["write_email", "done"],  # Document review request
+    "email_input_8": ["write_email", "done"],  # Swimming class registration
+    "email_input_9": [],  # GitHub PR comment - notification only
+    "email_input_10": ["check_calendar_availability", "schedule_meeting", "write_email", "done"],  # Planning meeting
+    "email_input_11": [],  # AWS alert - notification only
+    "email_input_12": [],  # Subscription renewal - no action needed
+    "email_input_13": ["write_email", "done"],  # Doctor appointment reminder
+    "email_input_14": [],  # Social media notification - no action needed
+    "email_input_15": ["check_calendar_availability", "schedule_meeting", "write_email", "done"]  # Joint presentation
+}
+
+# Response criteria (when applicable)
+response_criteria_1 = "Should address the missing API endpoints (/auth/refresh, /auth/validate) and offer to update the documentation or clarify whether their absence was intentional."
+response_criteria_2 = "No response needed - this is a newsletter notification that should be ignored or simply marked as read."
+response_criteria_3 = "No response needed - this is a system maintenance notification that should just be noted or forwarded to relevant team members."
+response_criteria_4 = "Should acknowledge the tax planning discussion request and either propose specific times for the meeting (Tuesday/Thursday afternoon) or check calendar availability and schedule a call for about 45 minutes."
+response_criteria_5 = "No response needed - this is a reminder about expense reports that should be noted for action but doesn't require direct response."
+response_criteria_6 = "Should express interest in attending the TechConf 2025, mention the early bird registration deadline (April 30th), and possibly ask for more details about the AI/ML workshops or request group discount information."
+response_criteria_7 = "Should agree to review the technical specifications (pages 15-20) of the Henderson project proposal before Friday's client submission deadline and offer feedback."
+response_criteria_8 = "Should respond about registering the daughter for swimming classes, expressing a preference for one of the available time slots (Mon/Wed 4PM or Tue/Thu 5PM) and ask for registration details."
+response_criteria_9 = "No response needed - this is a GitHub notification that should be noted or the comment should be viewed on GitHub directly."
+response_criteria_10 = "Should propose times for the 90-minute quarterly planning session within the requested Monday/Wednesday timeframe between 10AM-3PM."
+response_criteria_11 = "No response needed - this is an automated system alert that should be forwarded to the technical team for investigation."
+response_criteria_12 = "No response needed - this is an automated subscription renewal notification that doesn't require a response."
+response_criteria_13 = "Should acknowledge the annual checkup reminder and indicate intention to call the doctor's office to schedule an appointment."
+response_criteria_14 = "No response needed - this is a social media notification that can be ignored."
+response_criteria_15 = "Should agree to collaborate on the joint presentation, propose a specific time for the 60-minute meeting within the Tuesday/Thursday availability mentioned, and possibly mention reviewing the existing slides."
 
 examples_triage = [
   {
@@ -332,62 +384,62 @@ examples_triage = [
 examples_response = [
   {
       "inputs": {"email_input": email_input_1},
-      "outputs": {"response": response_output_1},
+      "outputs": {"criteria": response_criteria_1},
   },
   {
       "inputs": {"email_input": email_input_2},
-      "outputs": {"response": response_output_2},
+      "outputs": {"criteria": response_criteria_2},
   },
   {
       "inputs": {"email_input": email_input_3},
-      "outputs": {"response": response_output_3},
+      "outputs": {"criteria": response_criteria_3},
   },
   {
       "inputs": {"email_input": email_input_4},
-      "outputs": {"response": response_output_4},
+      "outputs": {"criteria": response_criteria_4},
   },
   {
       "inputs": {"email_input": email_input_5},
-      "outputs": {"response": response_output_5},
+      "outputs": {"criteria": response_criteria_5},
   },
   {
       "inputs": {"email_input": email_input_6},
-      "outputs": {"response": response_output_6},
+      "outputs": {"criteria": response_criteria_6},
   },
   {
       "inputs": {"email_input": email_input_7},
-      "outputs": {"response": response_output_7},
+      "outputs": {"criteria": response_criteria_7},
   },
   {
       "inputs": {"email_input": email_input_8},
-      "outputs": {"response": response_output_8},
+      "outputs": {"criteria": response_criteria_8},
   },
   {
       "inputs": {"email_input": email_input_9},
-      "outputs": {"response": response_output_9},
+      "outputs": {"criteria": response_criteria_9},
   },
   {
       "inputs": {"email_input": email_input_10},
-      "outputs": {"response": response_output_10},
+      "outputs": {"criteria": response_criteria_10},
   },
   {
       "inputs": {"email_input": email_input_11},
-      "outputs": {"response": response_output_11},
+      "outputs": {"criteria": response_criteria_11},
   },
   {
       "inputs": {"email_input": email_input_12},
-      "outputs": {"response": response_output_12},
+      "outputs": {"criteria": response_criteria_12},
   },
   {
       "inputs": {"email_input": email_input_13},
-      "outputs": {"response": response_output_13},
+      "outputs": {"criteria": response_criteria_13},
   },
   {
       "inputs": {"email_input": email_input_14},
-      "outputs": {"response": response_output_14},
+      "outputs": {"criteria": response_criteria_14},
   },
   {
       "inputs": {"email_input": email_input_15},
-      "outputs": {"response": response_output_15},
+      "outputs": {"criteria": response_criteria_15},
   },
 ]

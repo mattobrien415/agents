@@ -37,12 +37,18 @@ class Question(BaseModel):
       """Question to ask user."""
       content: str
     
+@tool
+class Done(BaseModel):
+      """E-mail has been sent."""
+      content: str
+
 # All tools available to the agent
 tools = [
     write_email, 
     schedule_meeting, 
     check_calendar_availability, 
     Question, 
+    Done,
 ]
 
 tools_by_name = {tool.name: tool for tool in tools}

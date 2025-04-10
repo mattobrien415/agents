@@ -10,6 +10,7 @@ You have access to the following tools to help manage communications and schedul
 2. write_email(to, subject, content) - Send emails to specified recipients
 3. schedule_meeting(attendees, subject, duration_minutes, preferred_day) - Schedule calendar meetings
 4. check_calendar_availability(day) - Check available time slots for a given day
+5. Done - E-mail has been sent
 </ Tools >
 
 < Instructions >
@@ -20,7 +21,8 @@ When handling emails, follow these steps:
 4. For meeting requests, use the check_calendar_availability tool to find open time slots
 5. To schedule a meeting, use the the schedule_meeting tool 
 6. If you scheduled a meeting, then draft a short response email using the write_email tool
-7. After using the write_email tool, the task is complete and you can simply tell the user that the email has been sent
+7. After using the write_email tool, the task is complete 
+8. If you have sent the email, then use the Done tool to indicate that the task is complete
 </ Instructions >
 
 < Background >
@@ -80,6 +82,7 @@ You have access to the following tools to help manage communications and schedul
 1. write_email(to, subject, content) - Send emails to specified recipients
 2. schedule_meeting(attendees, subject, duration_minutes, preferred_day) - Schedule calendar meetings
 3. check_calendar_availability(day) - Check available time slots for a given day
+4. Done - E-mail has been sent
 </ Tools >
 
 < Instructions >
@@ -90,7 +93,8 @@ When handling emails, follow these steps:
 4. For meeting requests, use the check_calendar_availability tool to find open time slots
 5. To schedule a meeting, use the the schedule_meeting tool 
 6. If you scheduled a meeting, then draft a short response email using the write_email tool
-7. After using the write_email tool, the task is complete and you can simply tell the user that the email has been sent
+7. After using the write_email tool, the task is complete
+8. If you have sent the email, then use the Done tool to indicate that the task is complete
 </ Instructions >
 
 < Background >
@@ -118,6 +122,7 @@ You have access to the following tools to help manage communications and schedul
 2. schedule_meeting(attendees, subject, duration_minutes, preferred_day) - Schedule calendar meetings
 3. check_calendar_availability(day) - Check available time slots for a given day
 4. Question(content) - Ask the user any follow-up questions
+5. Done - E-mail has been sent
 </ Tools >
 
 < Instructions >
@@ -129,7 +134,8 @@ When handling emails, follow these steps:
 5. For meeting requests, use the check_calendar_availability tool to find open time slots
 6. To schedule a meeting, use the the schedule_meeting tool 
 7. If you scheduled a meeting, then draft a short response email using the write_email tool
-8. After using the write_email tool, the task is complete and you can simply tell the user that the email has been sent
+8. After using the write_email tool, the task is complete
+9. If you have sent the email, then use the Done tool to indicate that the task is complete
 </ Instructions >
 
 < Background >
@@ -157,9 +163,10 @@ You have access to the following tools to help manage communications and schedul
 2. schedule_meeting(attendees, subject, duration_minutes, preferred_day) - Schedule calendar meetings
 3. check_calendar_availability(day) - Check available time slots for a given day
 4. Question(content) - Ask the user any follow-up questions
-5. search_memory(namespace=("email_assistant", "response_preferences")) - Search for response preferences
-6. search_memory(namespace=("email_assistant", "cal_preferences")) - Search for calendar preferences
-7. search_memory(namespace=("email_assistant", "background")) - Search for background information about or context
+5. response_preferences - Search for response preferences
+6. cal_preferences - Search for calendar scheduling preferences
+7. background - Search for background information about the user and their contacts 
+8. Done - E-mail has been sent
 </ Tools >
 
 < Instructions >
@@ -174,7 +181,8 @@ When handling emails, follow these steps:
 8. Schedule meetings with the schedule_meeting tool when appropriate
 9. If you scheduled a meeting, then draft a short response email using the write_email tool
 10. Draft response emails using the write_email tool
-11. After calling the write_email tool, the task is complete and you can simply tell the user that the email has been sent
+11. After calling the write_email tool, the task is complete
+12. If you have sent the email, then use the Done tool to indicate that the task is complete
 </ Instructions >
 """
 
