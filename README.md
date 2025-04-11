@@ -54,8 +54,6 @@ There are [a few approaches to building an email assistant](https://langchain-ai
 
 ### Run E-mail Assistants 
 
-TODO: Add notebooks
-
 Install uv package manager and start LangGraph Platform server locally:
 ```shell
 # Install uv package manager
@@ -129,7 +127,10 @@ The evaluation framework uses a combination of `eval` folder for triage comparis
 
 ### Run Evaluation 
 
-To evaluate the performance of both email assistant implementations, follow these steps:
+The project includes two main approaches for evaluation:
+
+1. **Pytest tests** that verify functionality, HITL integration, and memory features
+2. **LangSmith evaluation** that tracks API performance for triage accuracy
 
 #### Prerequisites
 1. Set up your LangSmith API key as an environment variable:
@@ -140,10 +141,10 @@ To evaluate the performance of both email assistant implementations, follow thes
 #### Running the Evaluations Using run_all_tests.py
 The easiest way to run all tests and evaluations is to use the provided `run_all_tests.py` script:
 ```bash
-python run_all_tests.py
+python run_all_tests.py --rich-output
 ```
 
-This script offers several options:
+This script runs pytest tests looking at tool calling, response criteria, HITL, and memory using test cases in `email_dataset.py`. It offers several options:
 ```bash
 # Run with rich output display
 python run_all_tests.py --rich-output
@@ -153,89 +154,71 @@ python run_all_tests.py --experiment-name "April8Fix"
 ```
 
 #### Running Individual Evaluations
-You can also run individual evaluation scripts:
 
 ##### Triage Evaluation
 ```bash
 python -m eval.evaluate_triage
 ```
 
-This script will:
-1. Create a dataset in LangSmith with test emails defined in `eval/email_dataset.py` (if it doesn't exist)
-2. Run both the agentic workflow and ReAct email assistants against this dataset
-3. Evaluate each assistant's performance using an LLM-as-judge approach
-4. Generate a visual comparison of the results and save it to `eval/results/`
-5. Print the performance scores of both assistants in the terminal
+This script performs API evaluation via LangSmith:
+1. Creates a LangSmith dataset with test emails defined in `eval/email_dataset.py` (if it doesn't exist)
+2. Runs and logs both email assistant implementations against this dataset
+3. Evaluates each assistant's triage performance using direct comparison
+4. Generates a visual comparison of the results and saves it to `eval/results/`
+5. Prints the performance scores in the terminal
 
 ##### Response Quality and Tool Call Evaluation
 ```bash
-python -m pytest tests/test_email_assistant.py::test_response_criteria_evaluation -v
-python -m pytest tests/test_email_assistant.py::test_email_dataset_tool_calls -v
+python -m pytest tests/test_response.py -v
+python -m pytest tests/test_hitl.py -v
+python -m pytest tests/test_memory.py -v
 ```
 
 These tests evaluate:
 1. The quality of responses against specific criteria for each email type
-2. The correct use of tools (write_email, schedule_meeting, check_calendar_availability)
-3. Each test case is individually logged to LangSmith
-4. Detailed results are saved to `eval/results/` folder
+2. The correct use of tools in response handling
+3. HITL interaction with feedback and interrupts
+4. Memory updates in response to user feedback
+
+Each test case is individually logged to LangSmith, allowing detailed performance analysis.
 
 #### Understanding the Results
-The triage evaluation measures how well each assistant correctly classifies emails as "respond", "notify", or "ignore" using direct string matching with the expected classifications. The response evaluation uses an LLM-as-judge approach to measure the quality and appropriateness of the responses generated. Both use a 0-1 scale, where higher scores indicate better performance.
+The triage evaluation measures how well each assistant correctly classifies emails as "respond", "notify", or "ignore" using direct string matching. The test suites verify correct tool calls, response quality, handling of human feedback, and memory updates.
 
 #### Viewing Results in LangSmith
 After running the evaluations, you can view detailed results in the LangSmith dashboard:
 1. Go to [LangSmith](https://smith.langchain.com/)
-2. Navigate to the "Datasets" section to find the relevant datasets
-3. View the results of each experiment to see detailed performance breakdowns
-
-You can also find an example dataset with previous evaluation results [here](https://smith.langchain.com/public/1e3765c9-3455-4243-bb75-e4d865cc5960/d).
+2. Navigate to the "Datasets" section to find the triage evaluation dataset
+3. Check the "Runs" section to see detailed test results from pytest
 
 ![Screenshot 2025-04-01 at 3 04 05 PM](https://github.com/user-attachments/assets/0545212b-4563-4ca8-a748-abe31c84ee18)
 
 ### Automated Testing with pytest and LangSmith
 
-The project includes a comprehensive test suite integrated with pytest and LangSmith for continuous evaluation:
+The project includes a comprehensive test suite integrated with pytest and LangSmith:
 
 ```bash
-# Run all tests
-python run_all_tests.py
-
-# Run with rich output display
+# Run all tests with rich output
 python run_all_tests.py --rich-output
 
 # Run with specific experiment name prefix
 python run_all_tests.py --experiment-name "April8Fix"
-
-# Run with warnings disabled (default in run_all_tests.py)
-python run_all_tests.py
 ```
 
 ![Screenshot 2025-04-08 at 8 07 48 PM](https://github.com/user-attachments/assets/f04a0beb-7c5e-4fec-8e6b-af181ec21300)
 
-Each test type is automatically assigned a descriptive experiment name in LangSmith:
-- `test_run.py` → "Basic Functionality" 
-- `test_hitl.py` → "HITL Tests"
-- `test_memory.py` → "Memory Tests"
+Test modules test different aspects of functionality:
+- `test_response.py` - Tests response generation and tool calling
+- `test_hitl.py` - Tests human-in-the-loop functionality
+- `test_memory.py` - Tests memory updates and preference learning
 
-When using the `--experiment-name` flag, the provided name will be prefixed to these default names (e.g., "April8Fix - Basic").
+All tests use the process_stream approach to handle multiple interrupts properly, with specific feedback on first interrupt and accept on subsequent ones. This ensures thorough testing of interrupt handling in all assistants.
 
-You can also run specific tests directly with pytest:
-```
-python -m pytest tests/test_run.py -v
-```
+Each test is marked with `@pytest.mark.langsmith` to log inputs, outputs, and results to LangSmith, providing detailed traces for analysis.
 
-The test suite includes:
-- Basic email assistant tests (`run_test.py`)
-- Email content memory tests (`test_email_memory.py`)
-- Calendar and scheduling memory tests (`test_calendar_memory.py`)
-
-Each test is marked with `@pytest.mark.langsmith` and logs inputs, outputs, and feedback to LangSmith, creating a dataset and experiment that can be viewed in the LangSmith dashboard.
-
-For more details, see the `tests/README.md` file.
+Tests are parametrized to run against the test cases defined in `email_dataset.py`, which is reloaded for each test to ensure the latest version is used.
 
 ## Human-in-the-loop 
-
-TODO: Add notebooks
 
 ### Adding HITL to the Workflow 
 
@@ -323,8 +306,6 @@ The entire process integrates seamlessly with the workflow:
 This human-in-the-loop approach gives you oversight while still letting the assistant handle routine tasks, creating an effective collaboration.
 
 ## Memory & Learning Through Feedback
-
-TODO: Add notebooks
 
 Our email assistant becomes even more powerful when we add memory capabilities, allowing it to learn from user feedback and adapt to preferences over time.
 
@@ -518,10 +499,6 @@ We've buit up to a system that can learn our preferences over time:
 
 The graph already can be run with LangGraph Platform locally using the `langgraph dev` command. 
 
-TODO: Add remote deployment instructions. 
-
 ## Customization 
 
 You can use any model support by `init_chat_model` shown [here](https://python.langchain.com/api_reference/langchain/chat_models/langchain.chat_models.base.init_chat_model.html).
-
-TODO: Add to configuration 

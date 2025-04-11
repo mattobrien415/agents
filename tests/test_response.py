@@ -15,7 +15,11 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
 from src.email_assistant.utils import extract_tool_calls, format_messages_string
-from eval.prompt import RESPONSE_CRITERIA_SYSTEM_PROMPT
+from eval.prompts import RESPONSE_CRITERIA_SYSTEM_PROMPT
+
+# Force reload the email_dataset module to ensure we get the latest version
+if "eval.email_dataset" in sys.modules:
+    importlib.reload(sys.modules["eval.email_dataset"])
 from eval.email_dataset import email_inputs, email_names, response_criteria_list, triage_outputs_list, expected_tool_calls
     
 class CriteriaGrade(BaseModel):
@@ -269,7 +273,7 @@ def test_response_criteria_evaluation(email_input, email_name, criteria, expecte
         {"role": "system",
             "content": RESPONSE_CRITERIA_SYSTEM_PROMPT},
         {"role": "user",
-            "content": f"""Response criteria: {criteria} Assistant's response: {all_messages_str}  Evaluate whether the assistant's response meets the criteria and provide justification for your evaluation."""}
+            "content": f"""\n\n Response criteria: {criteria} \n\n Assistant's response: \n\n {all_messages_str} \n\n Evaluate whether the assistant's response meets the criteria and provide justification for your evaluation."""}
     ])
 
     # Log feedback response

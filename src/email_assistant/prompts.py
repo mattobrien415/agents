@@ -25,6 +25,10 @@ When handling emails, follow these steps:
 8. If you have sent the email, then use the Done tool to indicate that the task is complete
 </ Instructions >
 
+< Triage Instructions >
+{triage_instructions}
+</ Triage Instructions >
+
 < Background >
 {background}
 </ Background >
@@ -227,9 +231,7 @@ default_triage_instructions = """
 Emails that are not worth responding to:
 - Marketing newsletters and promotional emails
 - Spam or suspicious emails
-- Mass company announcements not requiring action
 - CC'd on FYI threads with no direct questions
-- Automated system notifications not relevant to current projects
 
 There are also other things that should be known about, but don't require an email response. For these, you should notify (using the `notify` response). Examples of this include:
 - Team member out sick or on vacation
@@ -237,6 +239,9 @@ There are also other things that should be known about, but don't require an ema
 - Project status updates without action items
 - Important company announcements
 - FYI emails that contain relevant information for current projects
+- HR Department deadline reminders
+- Subscription status / renewal reminders
+- GitHub notifications
 
 Emails that are worth responding to:
 - Direct questions from team members requiring expertise

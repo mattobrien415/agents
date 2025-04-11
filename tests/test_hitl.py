@@ -14,7 +14,11 @@ from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command
 
 from src.email_assistant.utils import format_messages_string
-from eval.prompt import HITL_FEEDBACK_SYSTEM_PROMPT
+from eval.prompts import HITL_FEEDBACK_SYSTEM_PROMPT
+
+# Force reload the email_dataset module to ensure we get the latest version
+if "eval.email_dataset" in sys.modules:
+    importlib.reload(sys.modules["eval.email_dataset"])
 from eval.email_dataset import STANDARD_EMAIL, NOTIFICATION_EMAIL
 
 class CriteriaGrade(BaseModel):
@@ -110,18 +114,37 @@ def test_hitl_notify(email_input):
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
     
-    # Run the graph initially
-    messages = run_initial_stream(email_assistant, email_input, thread_config)
-    
-    # Provide feedback and resume the graph
+    # For first interrupt, provide specific feedback
     feedback = "Let's actually respond to this email with just a polite 'thank you!'"
-    resume_command = Command(resume=[{
-        "type": "response", 
-        "args": feedback
-    }])
-    
-    # Run with the command
-    messages_with_feedback = run_stream_with_command(email_assistant, resume_command, thread_config)
+
+    # Create a function to process chunks and handle interrupts recursively
+    def process_stream(input_data, first_interrupt=True):
+        result = {}
+        # Stream and process all chunks
+        for chunk in email_assistant.stream(input_data, config=thread_config):
+            # Update result with chunk data
+            result.update(chunk)
+            # If we hit an interrupt, handle it
+            if "__interrupt__" in chunk:
+                if first_interrupt:
+                    resume_command = Command(resume=[{
+                        "type": "response", 
+                        "args": feedback
+                    }])
+                    # Next interrupts should just accept
+                    first_interrupt = False
+                else:
+                    # For subsequent interrupts, just accept
+                    resume_command = Command(resume=[{"type": "accept", "args": ""}])
+                
+                # Recursively process with the command
+                interrupt_result = process_stream(resume_command, first_interrupt)
+                # Update result with interrupt processing result
+                result.update(interrupt_result)
+        return result
+        
+    # Start processing with the email input
+    process_stream({"email_input": email_input})
     
     # Get the final state
     state = email_assistant.get_state(thread_config)
@@ -152,17 +175,35 @@ def test_hitl_respond_edit(email_input):
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
             
-    # Run the graph initially
-    messages = run_initial_stream(email_assistant, email_input, thread_config)
-    
-    # Create an edit command with specific response content
-    resume_command = Command(resume=[{"type": "response",  
-                                     "args": {"args": {"to": "Alice Smith <alice.smith@company.com>",
-                                                      "subject": "RE: Quick question about API documentation",
-                                                      "content": "Thanks Alice, I will fix it!"}}}])
-    
-    # Run with the command
-    messages_with_feedback = run_stream_with_command(email_assistant, resume_command, thread_config)
+    # Create a function to process chunks and handle interrupts recursively
+    def process_stream(input_data, first_interrupt=True):
+        result = {}
+        # Stream and process all chunks
+        for chunk in email_assistant.stream(input_data, config=thread_config):
+            # Update result with chunk data
+            result.update(chunk)
+            # If we hit an interrupt, handle it
+            if "__interrupt__" in chunk:
+                if first_interrupt:
+                    # For first interrupt, provide specific edit command
+                    resume_command = Command(resume=[{"type": "response",  
+                                               "args": {"args": {"to": "Alice Smith <alice.smith@company.com>",
+                                                                "subject": "RE: Quick question about API documentation",
+                                                                "content": "Thanks Alice, I will fix it!"}}}])
+                    # Next interrupts should just accept
+                    first_interrupt = False
+                else:
+                    # For subsequent interrupts, just accept
+                    resume_command = Command(resume=[{"type": "accept", "args": ""}])
+                
+                # Recursively process with the command
+                interrupt_result = process_stream(resume_command, first_interrupt)
+                # Update result with interrupt processing result
+                result.update(interrupt_result)
+        return result
+        
+    # Start processing with the email input
+    process_stream({"email_input": email_input})
     
     # Get the final state
     state = email_assistant.get_state(thread_config)
@@ -191,18 +232,37 @@ def test_hitl_respond_feedback(email_input):
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
     
-    # Run the graph initially
-    messages = run_initial_stream(email_assistant, email_input, thread_config)
-    
-    # Create a feedback response
+    # For first interrupt, provide specific feedback
     feedback = "Let's just say that we will fix it!'"
-    resume_command = Command(resume=[{
-        "type": "response", 
-        "args": feedback
-    }])
-    
-    # Run with the command
-    messages_with_feedback = run_stream_with_command(email_assistant, resume_command, thread_config)
+
+    # Create a function to process chunks and handle interrupts recursively
+    def process_stream(input_data, first_interrupt=True):
+        result = {}
+        # Stream and process all chunks
+        for chunk in email_assistant.stream(input_data, config=thread_config):
+            # Update result with chunk data
+            result.update(chunk)
+            # If we hit an interrupt, handle it
+            if "__interrupt__" in chunk:
+                if first_interrupt:
+                    resume_command = Command(resume=[{
+                        "type": "response", 
+                        "args": feedback
+                    }])
+                    # Next interrupts should just accept
+                    first_interrupt = False
+                else:
+                    # For subsequent interrupts, just accept
+                    resume_command = Command(resume=[{"type": "accept", "args": ""}])
+                
+                # Recursively process with the command
+                interrupt_result = process_stream(resume_command, first_interrupt)
+                # Update result with interrupt processing result
+                result.update(interrupt_result)
+        return result
+        
+    # Start processing with the email input
+    process_stream({"email_input": email_input})
     
     # Get the final state
     state = email_assistant.get_state(thread_config)

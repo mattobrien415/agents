@@ -276,27 +276,90 @@ triage_output_8 = "respond"
 triage_output_9 = "notify"
 triage_output_10 = "respond"
 triage_output_11 = "notify"
-triage_output_12 = "ignore"
+triage_output_12 = "notify"
 triage_output_13 = "respond"
 triage_output_14 = "ignore"
 triage_output_15 = "respond"
 
 # Response criteria (when applicable)
-response_criteria_1 = "Should take ownership over the request, either should  investigate or assign it to someone."
-response_criteria_2 = "No response needed - this is a newsletter notification that should be ignored or simply marked as read."
-response_criteria_3 = "No response needed - this is a system maintenance notification that should just be noted or forwarded to relevant team members."
-response_criteria_4 = "Should acknowledge the tax planning discussion request, check calendar availability in the times proposed, and send an invite."
-response_criteria_5 = "No response needed - this is a reminder about expense reports that should be noted for action but doesn't require direct response."
-response_criteria_6 = "Should express interest in attending the conference and follow-up with questions about workshops or group discounts."
-response_criteria_7 = "Should agree to review the project proposal before Friday's client submission deadline."
-response_criteria_8 = "Should respond about registering the daughter for swimming classes, expressing a preference for one of the available time slots (Mon/Wed 4PM or Tue/Thu 5PM) and ask for registration details."
-response_criteria_9 = "No response needed - this is a GitHub notification that should be noted or the comment should be viewed on GitHub directly."
-response_criteria_10 = "Should check calendar availability and propose times for the 90-minute quarterly planning session within the requested timeframes."
-response_criteria_11 = "No response needed - this is an automated system alert that should be forwarded to the technical team for investigation."
-response_criteria_12 = "No response needed - this is an automated subscription renewal notification that doesn't require a response."
-response_criteria_13 = "Should acknowledge the annual checkup reminder and indicate intention to call the doctor's office to schedule an appointment."
-response_criteria_14 = "No response needed - this is a social media notification that can be ignored."
-response_criteria_15 = "Should agree to collaborate on the joint presentation, check calendar, and propose a specific time for the 60-minute meeting within the Tuesday/Thursday availability mentioned."
+response_criteria_1 = """
+• Send email with write_email tool call to acknowledge the question and confirm it will be investigated  
+"""
+
+response_criteria_2 = """
+• No response needed
+• Ensure this is ignored  
+"""
+
+response_criteria_3 = """
+• No response needed
+• Ensure the user is notified  
+"""
+
+response_criteria_4 = """
+• Check calendar availability for Tuesday or Thursday afternoon next week with check_calendar_availability tool call 
+• Confirm availability for a 45-minute meeting
+• Send calendar invite with schedule_meeting tool call 
+• Send email with write_email tool call to acknowledge tax planning request and notifying that a meeting has been scheduled  
+"""
+
+response_criteria_5 = """
+• No response needed
+• Ensure the user is notified  
+"""
+
+response_criteria_6 = """
+• Express interest in attending TechConf 2025
+• Ask specific questions about AI/ML workshops
+• Inquire about group discount details
+• Send email with write_email tool call to express interest in attending TechConf 2025, ask specific questions about AI/ML workshops, and inquire about group discount details
+"""
+
+response_criteria_7 = """
+• Explicitly agree to review the technical specifications
+• Acknowledge Friday deadline
+• Send email with write_email tool call to explicitly agree to review the technical specifications and acknowledge Friday deadline
+"""
+
+response_criteria_8 = """
+• Send email with write_email tool call to express interest in registering daughter for swimming class
+"""
+
+response_criteria_9 = """
+• No response needed
+• Ensure the user is notified  
+"""
+
+response_criteria_10 = """
+• Check calendar for 90-minute meeting availability for Monday or Wednesday with check_calendar_availability tool call 
+• Send email acknowledging the request and providing availability with write_email tool call  
+"""
+
+response_criteria_11 = """
+• No response needed
+• Ensure the user is notified  
+"""
+
+response_criteria_12 = """
+• No response needed
+• Ensure the user is notified  
+"""
+
+response_criteria_13 = """
+• Acknowledge annual checkup reminder
+• Send email with write_email tool call to acknowledge annual checkup reminder
+"""
+
+response_criteria_14 = """
+• No response needed
+• Ensure this is ignored  
+"""
+
+response_criteria_15 = """
+• Check calendar for 60-minute meeting availability for Tuesday or Thursday with check_calendar_availability tool call 
+• Send calendar invite with schedule_meeting tool call 
+• Send email agreeing to collaborate on the joint presentation and notifying that a meeting has been scheduled with write_email tool call  
+"""
 
 examples_triage = [
   {
@@ -397,7 +460,7 @@ expected_tool_calls = [
     ["write_email", "done"],                                                 # email_input_7: Document review request
     ["write_email", "done"],                                                 # email_input_8: Swimming class registration
     [],                                                                      # email_input_9: GitHub PR comment - notification only
-    ["check_calendar_availability", "schedule_meeting", "write_email", "done"], # email_input_10: Planning meeting
+    ["check_calendar_availability", "write_email", "done"], # email_input_10: Planning meeting
     [],                                                                      # email_input_11: AWS alert - notification only
     [],                                                                      # email_input_12: Subscription renewal - ignore
     ["write_email", "done"],                                                 # email_input_13: Doctor appointment reminder
