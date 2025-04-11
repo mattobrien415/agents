@@ -193,13 +193,28 @@ I'm Lance, a software engineer at LangChain.
 
 # Default response preferences 
 default_response_preferences = """
-Use professional and concise language. If the e-mail mentions a deadline, make sure to include that in the response.
+Use professional and concise language. If the e-mail mentions a deadline, make sure to explicitly acknowledge and reference the deadline in your response.
 
-When responding to technical questions about API documentation or missing endpoints:
-- Acknowledge the specific endpoints mentioned in the query
-- Clearly state whether you will investigate if the omission was intentional or if documentation needs updating
-- Offer to update documentation or provide clarification as appropriate
-- Provide an estimated timeline for when you'll have more information
+When responding to technical questions that require investigation:
+- Clearly state whether you will investigate or who you will ask
+- Provide an estimated timeline for when you'll have more information or complete the task
+
+When responding to event or conference invitations:
+- Always acknowledge any mentioned deadlines (particularly registration deadlines)
+- If workshops or specific topics are mentioned, ask for more specific details about them
+- If discounts (group or early bird) are mentioned, explicitly request information about them
+- Don't commit 
+
+When responding to collaboration or project-related requests:
+- Acknowledge any existing work or materials mentioned (drafts, slides, documents, etc.)
+- Explicitly mention reviewing these materials before or during the meeting
+- When scheduling meetings, clearly state the specific day, date, and time proposed
+
+When responding to meeting scheduling requests:
+- If times are proposed, verify calendar availability for all time slots mentioned in the original email and then commit to one of the proposed times based on your availability by scheduling the meeting. Or, say you can't make it at the time proposed.
+- If no times are proposed, then check your calendar for availability and propose multiple time options when available instead of selecting just one.
+- Mention the meeting duration in your response to confirm you've noted it correctly.
+- Reference the meeting's purpose in your response.
 """
 
 # Default calendar preferences 
@@ -229,6 +244,7 @@ Emails that are worth responding to:
 - Critical bug reports related to team's projects
 - Requests from management requiring acknowledgment
 - Client inquiries about project status or features
+- Technical questions about documentation, code, or APIs (especially questions about missing endpoints or features)
 - Personal reminders related to family (wife / daughter)
 - Personal reminder related to self-care (doctor appointments, etc)
 """

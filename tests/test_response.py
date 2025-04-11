@@ -66,8 +66,6 @@ def setup_assistant() -> Tuple[Any, Dict[str, Any], InMemoryStore]:
     elif AGENT_MODULE in ["email_assistant_hitl"]:
         # Just use a checkpointer for HITL version
         email_assistant = agent_module.overall_workflow.compile(checkpointer=checkpointer)
-        if "hitl" not in AGENT_MODULE.lower():
-            store = None
     else:
         # Just use a checkpointer for other versions
         email_assistant = agent_module.overall_workflow.compile(checkpointer=checkpointer)
@@ -148,21 +146,35 @@ def test_email_dataset_tool_calls(email_input, email_name, criteria, expected_ca
         # Workflow agent takes email_input directly
         result = email_assistant.invoke({"email_input": email_input}, config=thread_config)
         
+    elif AGENT_MODULE in ["email_assistant_hitl", "email_assistant_hitl_memory"]:
+        # HITL agents need special handling with multiple interrupts
+        
+        # Create a function to process chunks and handle interrupts recursively
+        def process_stream(input_data):
+            result = {}
+            # Stream and process all chunks
+            for chunk in email_assistant.stream(input_data, config=thread_config):
+                # Update result with chunk data
+                result.update(chunk)
+                # If we hit an interrupt, handle it with accept and continue
+                if "__interrupt__" in chunk:
+                    # Create accept command
+                    resume_command = Command(resume=[{"type": "accept", "args": ""}])
+                    # Recursively process the accept command
+                    interrupt_result = process_stream(resume_command)
+                    # Update result with interrupt processing result
+                    result.update(interrupt_result)
+            return result
+            
+        # Start processing with the email input
+        process_stream({"email_input": email_input})
     else:
         # Other agents take email_input directly but will use interrupt
-        result = {}
-        for chunk in email_assistant.stream({"email_input": email_input}, config=thread_config):
-            result.update(chunk)
-            
-        # Provide feedback and resume the graph with 'accept'
-        resume_command = Command(resume=[{
-            "type": "accept", 
-            "args": ""
-        }])
+        _ = run_initial_stream(email_assistant, email_input, thread_config)
         
-        # Complete the graph
-        for chunk in email_assistant.stream(resume_command, config=thread_config):
-            result.update(chunk)
+        # Provide feedback and resume the graph with 'accept'
+        resume_command = Command(resume=[{"type": "accept", "args": ""}])
+        _ = run_stream_with_command(email_assistant, resume_command, thread_config)
         
     # Get the final state
     state = email_assistant.get_state(thread_config)
@@ -178,11 +190,11 @@ def test_email_dataset_tool_calls(email_input, email_name, criteria, expected_ca
    
     # Log 
     all_messages_str = format_messages_string(values["messages"])
-    t.log_outputs({"response": all_messages_str})
     t.log_outputs({
                 "extracted_tool_calls": extracted_tool_calls,
                 "missing_calls": missing_calls,
                 "extra_calls": extra_calls,
+                "response": all_messages_str
             })
 
     # Pass feedback key
@@ -215,21 +227,35 @@ def test_response_criteria_evaluation(email_input, email_name, criteria, expecte
         # Workflow agent takes email_input directly
         result = email_assistant.invoke({"email_input": email_input}, config=thread_config)
         
+    elif AGENT_MODULE in ["email_assistant_hitl", "email_assistant_hitl_memory"]:
+        # HITL agents need special handling with multiple interrupts
+        
+        # Create a function to process chunks and handle interrupts recursively
+        def process_stream(input_data):
+            result = {}
+            # Stream and process all chunks
+            for chunk in email_assistant.stream(input_data, config=thread_config):
+                # Update result with chunk data
+                result.update(chunk)
+                # If we hit an interrupt, handle it with accept and continue
+                if "__interrupt__" in chunk:
+                    # Create accept command
+                    resume_command = Command(resume=[{"type": "accept", "args": ""}])
+                    # Recursively process the accept command
+                    interrupt_result = process_stream(resume_command)
+                    # Update result with interrupt processing result
+                    result.update(interrupt_result)
+            return result
+            
+        # Start processing with the email input
+        process_stream({"email_input": email_input})
     else:
         # Other agents take email_input directly but will use interrupt
-        result = {}
-        for chunk in email_assistant.stream({"email_input": email_input}, config=thread_config):
-            result.update(chunk)
-            
-        # Provide feedback and resume the graph with 'accept'
-        resume_command = Command(resume=[{
-            "type": "accept", 
-            "args": ""
-        }])
+        _ = run_initial_stream(email_assistant, email_input, thread_config)
         
-        # Complete the graph
-        for chunk in email_assistant.stream(resume_command, config=thread_config):
-            result.update(chunk)
+        # Provide feedback and resume the graph with 'accept'
+        resume_command = Command(resume=[{"type": "accept", "args": ""}])
+        _ = run_stream_with_command(email_assistant, resume_command, thread_config)
         
     # Get the final state
     state = email_assistant.get_state(thread_config)
@@ -248,8 +274,8 @@ def test_response_criteria_evaluation(email_input, email_name, criteria, expecte
 
     # Log feedback response
     t.log_outputs({
-        "response": all_messages_str,
         "justification": eval_result.justification,
+        "response": all_messages_str,
     })
         
     # Pass feedback key

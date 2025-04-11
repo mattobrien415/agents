@@ -131,7 +131,7 @@ def test_hitl_notify(email_input):
     all_messages_str = format_messages_string(values['messages'])
 
     # Log feedback response
-    t.log_outputs({"response": all_messages_str})
+    t.log_outputs({"feedback": feedback, "response": all_messages_str})
     
     # Pass feedback key
     assert "Let's actually respond" in all_messages_str
@@ -170,7 +170,7 @@ def test_hitl_respond_edit(email_input):
     
     # Generate message output string
     all_messages_str = format_messages_string(values['messages'])
-    t.log_outputs({"response": all_messages_str})
+    t.log_outputs({"edited_email": "Thanks Alice, I will fix it!", "response": all_messages_str})
     
     # Pass feedback key
     assert "Thanks Alice, I will fix it!" in all_messages_str
@@ -220,8 +220,9 @@ def test_hitl_respond_feedback(email_input):
     ])
 
     # Log feedback response
-    t.log_outputs({"response": all_messages_str, 
-                   "justification": grade.justification})
+    t.log_outputs({"feedback": feedback, 
+                   "justification": grade.justification,
+                   "response": all_messages_str})
 
     # Pass feedback key
     assert grade.grade 
