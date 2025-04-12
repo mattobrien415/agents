@@ -1,6 +1,6 @@
 # Interrupt Workshop 
 
-AI assistants promise to make work easier. But we need effective ways to teach them our preferences and benchmark their performance. In this workshop, we'll build a simple system that can learn. It will focus on e-mail, learning our preference for triaging and responding to e-mails using both memory and human-in-the-loop as well as LangSmith for evaluation / testing.
+AI assistants promise to make work easier. But we need effective ways to teach them our preferences and benchmark their performance. In this workshop, we'll build an assistant that can learn. It will managed e-mail, learning our preference for triaging and responding to e-mails using both memory and human-in-the-loop. We'll use LangSmith to test and evaluate it.
 
 ![interrupt_conf_high_level](https://github.com/user-attachments/assets/37c4376b-519b-4f53-9525-e924fa067cfd)
 
@@ -28,29 +28,25 @@ $ pip install -e .
 
 ### Functionality 
 
-We want a few core functions in a baseline e-mail assistant:
-
-1. **Email Triage**: The assistant analyzes incoming emails and classifies them into three categories:
-   - **Respond**: Emails that require a direct response
-   - **Notify**: Important informational emails that should be noted
-   - **Ignore**: Low-priority emails like marketing or spam that can be safely ignored
-
-2. **Email Response**: For emails classified as needing a response, the assistant can craft and send appropriate replies using the available tools.
+An e-mail assistant should do a few things. First, the assistant analyzes incoming emails and classifies them. Here, we will classify them into three categories (respond, notify, ignore). For emails classified as needing a response, the assistant can call tools to check calendar availability, schedule meetings, and draft emails. 
 
 ### Tool calling agent vs Workflow 
 
 There are [a few approaches to building an email assistant](https://langchain-ai.github.io/langgraph/tutorials/workflows/), including:
 
-1. **Tool-calling ReAct Agent** (`email_assistant_react.py`):
-   - A single agent handles *all* tasks - both triage and response
-   - Has a dedicated triage tool to categorize emails
+1. **Tool-calling Agent** (`email_assistant_react.py`):
+   - This is a [baseline tool calling (aka ReAct) agent](https://langchain-ai.github.io/langgraph/how-tos/create-react-agent/#how-to-use-the-pre-built-react-agent)
+   - A single LLM handles *all* tasks using a collection of tools 
+   - It has a dedicated triage tool to categorize emails
    - Has tools for to e-mail drafting, calendar scheduling, and calendar search
    - All decision-making happens within one LLM component
 
 2. **Agentic Workflow** (`email_assistant.py`):
-   - Includes a clear separation of concerns between triage and response logic
+   - Includes a clear separation of concerns between triage step and an agent to handle e-mail response
    - Has router node to decide what to do with an email
    - E-mail response is handled by a separate agent with tools for e-mail drafting, calendar scheduling, and calendar search
+
+Agentic workflows offload some tools from the agent to a dedicated router. There are a few reasons to do this. First, we know that we always want the workflow to start with a triage step. So, we can break out that step from the agent and have a dedicated router to handle it. This allows the agent to focus only on responding to e-mails. Second, with routing offloaded we can more comfortably add tools to the agent, such as tool related to memory. 
 
 ### Run E-mail Assistants 
 
@@ -77,13 +73,13 @@ In studio, you can test both assistants with some email inputs directly to see w
 
 ### Structure 
 
-This uses LangSmith to perform evaluations in two different ways: it shows how to create a LangSmith dataset and run evaluations (for triage comparison) on this dataset and it shows how to run tests across all agents using Pytest.
+This uses LangSmith to perform evaluations in two different ways: it shows how to create a LangSmith dataset and run evaluations on this dataset and it shows how to run tests across all agents using Pytest.
 
 1. **Dataset**: A collection of sample emails with ground truth classifications, responses, and expected tool calls is defined in `eval/email_dataset.py`
 
 2. **Automated Testing** (`tests/test_email_assistant.py`):
    - Uses [Pytest with LangSmith to test](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest) all email assistant implementations
-   - Tests responses against specific criteria, which are defined in `eval/email_dataset.py`, using LLM-as-judge
+   - Tests responses against specific criteria using LLM-as-judge
    - Verifies correct tool calls against expected tool calls defined in `eval/email_dataset.py`
    - Logs results to LangSmith
 
@@ -148,7 +144,7 @@ This script creates a LangSmith dataset with test emails defined in `eval/email_
 
 1. Go to [LangSmith](https://smith.langchain.com/)
 2. Navigate to the "Datasets" section to find the results 
-3. The dataset name is defined in `eval/evaluate_triage.py` as `"Interrupt Workshop: E-mail Triage Dataset"`
+3. Dataset name in `eval/evaluate_triage.py`: `"Interrupt Workshop: E-mail Triage Dataset"`
 
 ![Screenshot 2025-04-01 at 3 04 05 PM](https://github.com/user-attachments/assets/0545212b-4563-4ca8-a748-abe31c84ee18)
 
