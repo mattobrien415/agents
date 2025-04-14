@@ -8,7 +8,7 @@ from datetime import datetime
 from eval.email_dataset import examples_triage
 
 from src.email_assistant.email_assistant import email_assistant
-from src.email_assistant.email_assistant_react import email_assistant as email_assistant_react
+from email_assistant.baseline_agent import email_assistant as baseline_agent
 
 # Client 
 client = Client()
@@ -49,8 +49,8 @@ def target_email_assistant(inputs: dict) -> dict:
         print(f"Error in workflow agent: {e}")
         return {"classification_decision": "unknown"}
 
-def target_email_assistant_react(inputs: dict) -> dict:
-    """Process an email through the ReAct-based email assistant.
+def target_email_assistant_baseline(inputs: dict) -> dict:
+    """Process an email through the baseline email assistant.
     
     Args:
         inputs: A dictionary containing the email_input field from the dataset
@@ -59,7 +59,7 @@ def target_email_assistant_react(inputs: dict) -> dict:
         A formatted dictionary with the assistant's response messages
     """
     try:
-        # Format a better prompt for the react agent
+        # Format a better prompt for the baseline agent
         email_content = inputs["email_input"]
         formatted_content = f"""
 From: {email_content.get('author', 'Unknown')}
@@ -70,14 +70,14 @@ Subject: {email_content.get('subject', 'No Subject')}
 """
         messages = [{"role": "user", "content": f"Please triage this email: {formatted_content}"}]
         
-        response = email_assistant_react.invoke({"messages": messages})
+        response = baseline_agent.invoke({"messages": messages})
         if "classification_decision" in response:
             return {"classification_decision": response['classification_decision']}
         else:
-            print("No classification_decision in response from react agent")
+            print("No classification_decision in response from baseline agent")
             return {"classification_decision": "unknown"}
     except Exception as e:
-        print(f"Error in react agent: {e}")
+        print(f"Error in baseline agent: {e}")
         return {"classification_decision": "unknown"}
 
 ## Evaluator 
@@ -88,9 +88,9 @@ def classification_evaluator(outputs: dict, reference_outputs: dict) -> bool:
     return outputs["classification_decision"].lower() == reference_outputs["classification"].lower()
 
 ## Run evaluation
-experiment_results_react = client.evaluate(
+experiment_results_baseline = client.evaluate(
     # Run agent  
-    target_email_assistant_react,
+    target_email_assistant_baseline,
     # Dataset name  
     data=dataset_name,
     # Evaluator
@@ -98,7 +98,7 @@ experiment_results_react = client.evaluate(
         classification_evaluator
     ],
     # Name of the experiment
-    experiment_prefix="E-mail assistant react", 
+    experiment_prefix="E-mail assistant baseline", 
     # Number of concurrent evaluations
     max_concurrency=2, 
 )
@@ -120,17 +120,17 @@ experiment_results_workflow = client.evaluate(
 
 ## Add visualization
 # Convert evaluation results to pandas dataframes
-df_react = experiment_results_react.to_pandas()
+df_baseline = experiment_results_baseline.to_pandas()
 df_workflow = experiment_results_workflow.to_pandas()
 
 # Calculate mean scores (values are on a 0-1 scale)
-react_score = df_react[f'feedback.classification_evaluator'].mean() if f'feedback.classification_evaluator' in df_react.columns else 0.0
+baseline_score = df_baseline[f'feedback.classification_evaluator'].mean() if f'feedback.classification_evaluator' in df_baseline.columns else 0.0
 workflow_score = df_workflow[f'feedback.classification_evaluator'].mean() if f'feedback.classification_evaluator' in df_workflow.columns else 0.0
 
 # Create a bar plot comparing the two models
 plt.figure(figsize=(10, 6))
 models = ['Tool Calling Agent', 'Agentic Workflow']
-scores = [react_score, workflow_score]
+scores = [baseline_score, workflow_score]
 
 # Create bars with distinct colors
 plt.bar(models, scores, color=['#5DA5DA', '#FAA43A'], width=0.5)
@@ -160,6 +160,6 @@ plt.savefig(plot_path)
 plt.close()
 
 print(f"\nEvaluation visualization saved to: {plot_path}")
-print(f"Tool Calling Agent Score: {react_score:.2f}")
-print(f"Agentic Workflow Score: {workflow_score:.2f}")
+print(f"Baseline Agent Score: {baseline_score:.2f}")
+print(f"Agent With Router Score: {workflow_score:.2f}")
 

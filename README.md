@@ -1,6 +1,8 @@
 # Interrupt Workshop 
 
-AI assistants promise to make work easier. But we need effective ways to teach them our preferences and benchmark their performance. In this workshop, we'll build an assistant that can learn. It will managed e-mail, learning our preference for triaging and responding to e-mails using both memory and human-in-the-loop. We'll use LangSmith to test and evaluate it.
+AI agents promise to transform how we work, but there's often a gap between hype and reality: to truly act on our behalf, agents need to learn and remember our preferences for personalization. In this repo, we show how to build self-improving and personalized agents from scratch using LangChain, LangGraph, and LangSmith. 
+
+In this hands-on workshop, you'll build an intelligent email assistant that actually learns how you think. Unlike generic AI tools, your assistant will master your unique approach to triaging and responding to emails through a combination of memory and human-in-the-loop feedback. 
 
 ![interrupt_conf_high_level](https://github.com/user-attachments/assets/37c4376b-519b-4f53-9525-e924fa067cfd)
 
@@ -34,8 +36,8 @@ An e-mail assistant should do a few things. First, the assistant analyzes incomi
 
 There are [a few approaches to building an email assistant](https://langchain-ai.github.io/langgraph/tutorials/workflows/), including:
 
-1. **Tool-calling Agent** (`email_assistant_react.py`):
-   - This is a [baseline tool calling (aka ReAct) agent](https://langchain-ai.github.io/langgraph/how-tos/create-react-agent/#how-to-use-the-pre-built-react-agent)
+1. **Tool-calling Agent** (`baseline_agent.py`):
+   - This is a [baseline tool calling agent](https://langchain-ai.github.io/langgraph/how-tos/create-react-agent/#how-to-use-the-pre-built-react-agent)
    - A single LLM handles *all* tasks using a collection of tools 
    - It has a dedicated triage tool to categorize emails
    - Has tools for to e-mail drafting, calendar scheduling, and calendar search
@@ -61,7 +63,7 @@ Here we can see the two assistants easily and test them. You will see in the `la
 ```shell
   "graphs": {
       "email_assistant": "./src/email_assistant/email_assistant.py:email_assistant",
-      "email_assistant_react": "./src/email_assistant/email_assistant_react.py:email_assistant"
+      "baseline_agent": "./src/email_assistant/baseline_agent.py:email_assistant"
     },
 ```
 

@@ -23,8 +23,8 @@ def main():
     
     # Define available implementations
     implementations = [
+        "baseline_agent", 
         "email_assistant",
-        "email_assistant_react", 
         "email_assistant_hitl",
         "email_assistant_hitl_memory"
     ]

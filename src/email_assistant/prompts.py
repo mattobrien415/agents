@@ -1,7 +1,7 @@
-# ReAct agent prompt
-agent_system_prompt_react = """
+# Baseline agent prompt
+agent_system_prompt_baseline = """
 < Role >
-You are an executive assistant. You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
+You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
 </ Role >
 
 < Tools >
@@ -78,7 +78,7 @@ Subject: {subject}
 # Agentic workflow prompt 
 agent_system_prompt = """
 < Role >
-You are an executive assistant. You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
+You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
 </ Role >
 
 < Tools >
@@ -117,7 +117,7 @@ When handling emails, follow these steps:
 # Agentic workflow with HITL prompt 
 agent_system_prompt_hitl = """
 < Role >
-You are an executive assistant. You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
+You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
 </ Role >
 
 < Tools >
