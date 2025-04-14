@@ -46,10 +46,7 @@ class Done(BaseModel):
       done: bool
     
 # Memory search tools for reading from memory Store 
-response_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "response_preferences"), name="response_preferences")
-cal_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "cal_preferences"), name="cal_preferences")
 background_tool = create_search_memory_tool(namespace=("email_assistant", "background"), name="background")
-triage_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "triage_preferences"), name="triage_preferences")
 
 # All tools available to the agent
 tools = [
@@ -57,10 +54,7 @@ tools = [
     schedule_meeting, 
     check_calendar_availability, 
     Question, 
-    response_preferences_tool, 
-    cal_preferences_tool, 
     background_tool,
-    triage_preferences_tool,
     Done
 ]
 
@@ -181,7 +175,6 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
                             })
         # Update the state
         update = {
-            "messages": messages,
             "classification_decision": classification,
         }
     elif classification == "ignore":
@@ -191,7 +184,6 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
         goto = END
         # Update the state
         update = {
-            "messages": messages,
             "classification_decision": classification,
         }
 
@@ -202,7 +194,6 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
         goto = "triage_interrupt_handler"
         # Update the state
         update = {
-            "messages": messages,
             "classification_decision": classification,
         }
 
@@ -270,18 +261,22 @@ def llm_call(state: State, store: BaseStore):
 
     # TODO (discuss w/ Will): May be a nicer way to initialize the memory
     # Calendar preferences
-    results = store.search(
+    cal_preferences_results = store.search(
         ("email_assistant", "cal_preferences")
     )
-    if not results:
+    if cal_preferences_results:
+        cal_preferences = cal_preferences_results[0].value['content']['content']
+    else:
         cal_preferences = default_cal_preferences
         cal_preferences_memory_manager.invoke({"messages": [{"role": "user", "content": cal_preferences}]})
 
     # Response preferences
-    results = store.search(
+    response_preferences_results = store.search(
         ("email_assistant", "response_preferences")
     )
-    if not results:
+    if response_preferences_results:
+        response_preferences = response_preferences_results[0].value['content']['content']
+    else:
         response_preferences = default_response_preferences
         response_preferences_memory_manager.invoke({"messages": [{"role": "user", "content": response_preferences}]})
 
@@ -289,7 +284,8 @@ def llm_call(state: State, store: BaseStore):
         "messages": [
             llm_with_tools.invoke(
                 [
-                    {"role": "system", "content": agent_system_prompt_hitl_memory}
+                    {"role": "system", "content": agent_system_prompt_hitl_memory.format(response_preferences=response_preferences, 
+                                                                                         cal_preferences=cal_preferences)}
                 ]
                 + state["messages"]
             )

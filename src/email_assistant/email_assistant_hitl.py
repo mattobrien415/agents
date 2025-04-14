@@ -110,7 +110,6 @@ def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "
                             })
         # Update the state
         update = {
-            "messages": messages,
             "classification_decision": classification,
         }
     elif classification == "ignore":
@@ -120,7 +119,6 @@ def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "
         goto = END
         # Update the state
         update = {
-            "messages": messages,
             "classification_decision": classification,
         }
 
@@ -131,7 +129,6 @@ def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "
         goto = "triage_interrupt_handler"
         # Update the state
         update = {
-            "messages": messages,
             "classification_decision": classification,
         }
 

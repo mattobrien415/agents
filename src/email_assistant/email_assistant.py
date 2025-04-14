@@ -141,26 +141,11 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
         print("📧 Classification: RESPOND - This email requires a response")
         goto = "response_agent"
         update = {
-            "messages": [{
-                    "role": "user",
-                    "content": f"Classification Decision: {result.classification}",
-                },
-                {
-                    "role": "user",
-                    "content": f"Respond to the email: \n\n{format_email_markdown(subject, author, to, email_thread)}",
-                }
-            ],
             "classification_decision": result.classification,
         }
     elif result.classification == "ignore":
         print("🚫 Classification: IGNORE - This email can be safely ignored")
         update =  {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"Classification Decision: {result.classification}"
-                }
-            ],
             "classification_decision": result.classification,
         }
         goto = END
@@ -168,12 +153,6 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
         # If real life, this would do something else
         print("🔔 Classification: NOTIFY - This email contains important information")
         update = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"Classification Decision: {result.classification}"
-                }
-            ],
             "classification_decision": result.classification,
         }
         goto = END

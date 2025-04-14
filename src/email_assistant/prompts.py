@@ -167,10 +167,8 @@ You have access to the following tools to help manage communications and schedul
 2. schedule_meeting(attendees, subject, duration_minutes, preferred_day) - Schedule calendar meetings
 3. check_calendar_availability(day) - Check available time slots for a given day
 4. Question(content) - Ask the user any follow-up questions
-5. response_preferences - Search for response preferences
-6. cal_preferences - Search for calendar scheduling preferences
-7. background - Search for background information about the user and their contacts 
-8. Done - E-mail has been sent
+5. background - Search for background information about the user and their contacts 
+6. Done - E-mail has been sent
 </ Tools >
 
 < Instructions >
