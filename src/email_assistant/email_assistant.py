@@ -4,7 +4,6 @@ from pydantic import BaseModel
 
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent
    
 from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt, default_background, default_triage_instructions, default_response_preferences, default_cal_preferences
 from email_assistant.schemas import State, RouterSchema, StateInput
@@ -46,6 +45,7 @@ tools_by_name = {tool.name: tool for tool in tools}
 # Initialize the LLM for use with router / structured output
 llm = init_chat_model("openai:gpt-4o", temperature=0.0)
 llm_router = llm.with_structured_output(RouterSchema) 
+
 # Initialize the LLM, enforcing tool use (of any available tools) for agent
 llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
 llm_with_tools = llm.bind_tools(tools)
@@ -59,8 +59,8 @@ def llm_call(state: State):
             llm_with_tools.invoke(
                 [
                     {"role": "system", "content": agent_system_prompt.format(background=default_background,
-                                       response_preferences=default_response_preferences, 
-                                       cal_preferences=default_cal_preferences)
+                                                                             response_preferences=default_response_preferences, 
+                                                                             cal_preferences=default_cal_preferences)
                     },
                     
                 ]
@@ -132,36 +132,33 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
         author=author, to=to, subject=subject, email_thread=email_thread
     )
 
+    # Create email markdown for Agent Inbox in case of notification  
+    email_markdown = format_email_markdown(subject, author, to, email_thread)
+
+    # Run the router LLM
     result = llm_router.invoke(
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
     )
-    if result.classification == "respond":
+
+    # Decision
+    classification = result.classification
+
+    if classification == "respond":
         print("📧 Classification: RESPOND - This email requires a response")
         goto = "response_agent"
+        # Add the email to the messages
         update = {
-            "messages": [{
-                    "role": "user",
-                    "content": f"Classification Decision: {result.classification}",
-                },
-                {
-                    "role": "user",
-                    "content": f"Respond to the email: \n\n{format_email_markdown(subject, author, to, email_thread)}",
-                }
-            ],
             "classification_decision": result.classification,
+            "messages": [{"role": "user",
+                            "content": f"Respond to the email: {email_markdown}"
+                        }],
         }
     elif result.classification == "ignore":
         print("🚫 Classification: IGNORE - This email can be safely ignored")
         update =  {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"Classification Decision: {result.classification}"
-                }
-            ],
             "classification_decision": result.classification,
         }
         goto = END
@@ -169,12 +166,6 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
         # If real life, this would do something else
         print("🔔 Classification: NOTIFY - This email contains important information")
         update = {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": f"Classification Decision: {result.classification}"
-                }
-            ],
             "classification_decision": result.classification,
         }
         goto = END

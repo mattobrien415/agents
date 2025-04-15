@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
-from src.email_assistant.prompts import agent_system_prompt_react, default_background, default_response_preferences, default_cal_preferences, default_triage_instructions
+from src.email_assistant.prompts import agent_system_prompt_baseline, default_background, default_response_preferences, default_cal_preferences, default_triage_instructions
 from src.email_assistant.schemas import State
 
 from langgraph.graph import StateGraph, START, END
@@ -60,7 +60,7 @@ def llm_call(state: State):
         "messages": [
             llm_with_tools.invoke(
                 [
-                    {"role": "system", "content": agent_system_prompt_react.format(
+                    {"role": "system", "content": agent_system_prompt_baseline.format(
                         background=default_background,
                         response_preferences=default_response_preferences,
                         cal_preferences=default_cal_preferences, 

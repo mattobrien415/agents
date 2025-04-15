@@ -12,7 +12,7 @@ from langmem import create_search_memory_tool, create_memory_store_manager
 
 from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_triage_instructions, default_background, default_response_preferences, default_cal_preferences
 from email_assistant.schemas import State, RouterSchema, StateInput
-from email_assistant.utils import parse_email, format_for_display, format_email_markdown
+from email_assistant.utils import parse_email, format_for_display, format_email_markdown, get_memory_profile, get_memory_collection
 
 # Agent tools 
 @tool
@@ -46,10 +46,7 @@ class Done(BaseModel):
       done: bool
     
 # Memory search tools for reading from memory Store 
-response_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "response_preferences"), name="response_preferences")
-cal_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "cal_preferences"), name="cal_preferences")
 background_tool = create_search_memory_tool(namespace=("email_assistant", "background"), name="background")
-triage_preferences_tool = create_search_memory_tool(namespace=("email_assistant", "triage_preferences"), name="triage_preferences")
 
 # All tools available to the agent
 tools = [
@@ -57,15 +54,11 @@ tools = [
     schedule_meeting, 
     check_calendar_availability, 
     Question, 
-    response_preferences_tool, 
-    cal_preferences_tool, 
     background_tool,
-    triage_preferences_tool,
     Done
 ]
 
 tools_by_name = {tool.name: tool for tool in tools}
-
 
 # Initialize the LLM for use with router / structured output
 llm = init_chat_model("openai:gpt-4o", temperature=0.0)
@@ -84,11 +77,13 @@ triage_feedback_memory_manager = create_memory_store_manager(
     enable_deletes=False # Do not delete profile from memory
 )
 
+# Default schema is content str 
 response_preferences_memory_manager = create_memory_store_manager(
     llm,
     namespace=("email_assistant", "response_preferences"),
-    instructions="""Extract user email response preferences into a single set of rules.
-    Format the information as a string explaining the criteria for each category.""",
+    instructions="""You goal is to maintain a profile that contains a user's email response preferences. 
+    If you are given a set of rules, do not remove any rules and simply include them in the resulting profile.
+    If you are given feedback on an email response, update the profile to reflect the new preferences.""",
     enable_inserts=False, # Update profile in-place,
     enable_deletes=False # Do not delete profile from memory
 )
@@ -121,26 +116,42 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
     - Messages meant for other teams
     """
 
-    # TODO(discuss w/ Will):: FIND BETTER WAY TO HANDLE THIS; WE NEED TO INITIALIZE THE MEMORY IF IT DOESN'T EXIST
+    
+
+    # Get background information from memory or initialize with defaults
+    background_content = get_memory_collection(
+        store,
+        ("email_assistant", "background"),
+        default_background,
+        background_memory_manager
+    )
+    
+    # Search for existing triage_preferences memory
     results = store.search(("email_assistant", "triage_preferences"))
+    # If memory exists, return its content
     if results:
-        triage_instructions = results[0].value['content']['content']
-    else:
+        triage_instructions=results[0].value['content']
+    # If memory doesn't exist, put it in the store
+    if not results:
+        # Here, we initialize the store with default triage instructions
+        store.put(("email_assistant", "triage_preferences"),"triage_preferences",{"kind": "Memory", "content": {"content": default_triage_instructions}})
         triage_instructions = default_triage_instructions
-        triage_feedback_memory_manager.invoke({"messages": [{"role": "user", "content": triage_instructions}]})
-        
-    # Search for background information in Store
+
+    # Search for existing background memory
     results = store.search(("email_assistant", "background"))
+    # If memory exists, return its content
     if results:
-        # Handle background which could be a list of memory objects
-        backgrounds = []
+         # Handle collection of memory objects
+        memories = []
         for result in results:
-            backgrounds.append(result.value['content']['content'])
-        background_content = "\n".join(backgrounds)
-    else:
+            memories.append(result.value['content']['content'])
+        background_content = "\n".join(memories)
+    # If memory doesn't exist, put it in the store
+    if not results:
+        # Here, we initialize the store with default triage instructions
+        store.put(("email_assistant", "background"),"background",{"kind": "Memory", "content": {"content": default_background}})
         background_content = default_background
-        background_memory_manager.invoke({"messages": [{"role": "user", "content": background_content}]})
-        
+     
     # Format system prompt with background and triage instructions
     system_prompt = triage_system_prompt.format(
         background=background_content,
@@ -166,23 +177,18 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
 
     # Decision
     classification = result.classification
-    messages = [{"role": "user",
-                "content": f"Classification Decision: {classification}"
-                }]
 
     # Process the classification decision
     if classification == "respond":
         print("📧 Classification: RESPOND - This email requires a response")
         # Next node
         goto = "response_agent"
-        # Add the email to the messages
-        messages.append({"role": "user",
-                            "content": f"Respond to the email: {email_markdown}"
-                            })
         # Update the state
         update = {
-            "messages": messages,
-            "classification_decision": classification,
+            "classification_decision": result.classification,
+            "messages": [{"role": "user",
+                            "content": f"Respond to the email: {email_markdown}"
+                        }],
         }
     elif classification == "ignore":
         print("🚫 Classification: IGNORE - This email can be safely ignored")
@@ -191,7 +197,6 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
         goto = END
         # Update the state
         update = {
-            "messages": messages,
             "classification_decision": classification,
         }
 
@@ -202,7 +207,6 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
         goto = "triage_interrupt_handler"
         # Update the state
         update = {
-            "messages": messages,
             "classification_decision": classification,
         }
 
@@ -268,35 +272,42 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
 def llm_call(state: State, store: BaseStore):
     """LLM decides whether to call a tool or not"""
 
-    # TODO (discuss w/ Will): May be a nicer way to initialize the memory
-    # Calendar preferences
-    results = store.search(
-        ("email_assistant", "cal_preferences")
-    )
+    # TODO: Will to add default param to the memory manager that avoid all of this and we can supply default_cal_preferences directly to the memory manager.
+    # Search for existing cal_preferences memory
+    results = store.search(("email_assistant", "cal_preferences"))
+    # If memory exists, return its content
+    if results:
+        cal_preferences=results[0].value['content']['content']
+    # If memory doesn't exist, put it in the store
     if not results:
+        # Here, we initialize the store with default cal preferences
+        # Create a schema Memory with content key and type str 
+        store.put(("email_assistant", "cal_preferences"),"cal_preferences",{"kind": "Memory", "content": {"content": default_cal_preferences}})
         cal_preferences = default_cal_preferences
-        cal_preferences_memory_manager.invoke({"messages": [{"role": "user", "content": cal_preferences}]})
 
-    # Response preferences
-    results = store.search(
-        ("email_assistant", "response_preferences")
-    )
+    # Search for existing response_preferences memory
+    results = store.search(("email_assistant", "response_preferences"))
+    # If memory exists, return its content
+    if results:
+        response_preferences=results[0].value['content']['content']
+    # If memory doesn't exist, put it in the store
     if not results:
+        # Here, we initialize the store with default response preferences
+        store.put(("email_assistant", "response_preferences"),"response_preferences",{"kind": "Memory", "content": {"content": default_response_preferences}})
         response_preferences = default_response_preferences
-        response_preferences_memory_manager.invoke({"messages": [{"role": "user", "content": response_preferences}]})
 
     return {
         "messages": [
             llm_with_tools.invoke(
                 [
-                    {"role": "system", "content": agent_system_prompt_hitl_memory}
+                    {"role": "system", "content": agent_system_prompt_hitl_memory.format(response_preferences=response_preferences, 
+                                                                                         cal_preferences=cal_preferences)}
                 ]
                 + state["messages"]
             )
         ]
     }
     
-
 def interrupt_handler(state: State, store: BaseStore):
     """Creates an interrupt for human review of tool calls"""
     
@@ -387,7 +398,7 @@ def interrupt_handler(state: State, store: BaseStore):
             # Save feedback in memory and update the write_email tool call with the edited content from Agent Inbox
             if tool_call["name"] == "write_email":
 
-                # Let's save our response preferences in memory
+                # TODO: Explain here, we update the memory in the namespace with the messages from the state
                 response_preferences_memory_manager.invoke({
                     "messages": state["messages"] + [{"role": "user", "content": f"Here is a better way to respond to emails: {edited_args}"}]
                 })
