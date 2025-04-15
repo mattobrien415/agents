@@ -1,3 +1,104 @@
+# Memory
+
+We've used Human-in-the-Loop (HITL) to allow users to review, provide feedback on, or correct the assistant's decisions. This is great, but it would be even better if the assistant *could learn from* the user's edit / feedback and adapt to their preferences over time. This is where memory comes in. Memory is a critical and emerging component of agent systems, allowing them to learn and improve over time. In this section, we'll add memory to our email assistant, allowing it to learn from user feedback and adapt to their preferences over time. This gives us more confidence that the assistant acts on our behalf with personalization. 
+
+![overview-img](img/overview_memory.png)
+
+## Memory in LangGraph
+
+### Thread-Scoped and Across-Thread Memory
+
+First, it's worth explaining how [memory works in LangGraph](https://langchain-ai.github.io/langgraph/concepts/memory/). LangGraph offers two distinct types of memory that serve complementary purposes in agent systems:
+
+**Thread-Scoped Memory (Short-term)** operates within the boundaries of a single conversation thread. It's automatically managed as part of the graph's state and persisted through thread-scoped checkpoints. This memory type retains conversation history, uploaded files, retrieved documents, and other artifacts generated during the interaction. Think of it as the working memory that maintains context within one specific conversation, allowing the agent to reference earlier messages or actions without starting from scratch each time.
+
+**Across-Thread Memory (Long-term)** extends beyond individual conversations, creating a persistent knowledge base that spans multiple sessions. This memory is stored as JSON documents in a memory store, organized by namespaces (like folders) and distinct keys (like filenames). Unlike thread-scoped memory, this information persists even after conversations end, enabling the system to recall user preferences, past decisions, and accumulated knowledge. This is what allows an agent to truly learn and adapt over time, rather than treating each interaction as isolated.
+
+![short-vs-long-term-memory](img/short-vs-long.png)
+
+The [Store](https://langchain-ai.github.io/langgraph/reference/store/#langgraph.store.base.BaseStore) is the foundation of this architecture, providing a flexible database where memories can be organized, retrieved, and updated. What makes this approach powerful is that regardless of which memory type you're working with, the same Store interface provides consistent access patterns. This allows your agent's code to remain unchanged whether you're using a simple in-memory implementation during development or a production-grade database in deployment. 
+
+### LangGraph Store
+
+LangGraph offers different [Store implementations depending on your deployment scenario](https://langchain-ai.github.io/langgraph/reference/store/#langgraph.store.base.BaseStore):
+
+1. **Pure In-Memory (e.g., notebooks)**:
+   - Uses `from langgraph.store.memory import InMemoryStore`
+   - Purely a Python dictionary in memory with no persistence
+   - Data is lost when the process terminates
+   - Useful for quick experiments and testing
+   - Includes semantic search with cosine similarity
+
+2. **Local Development with `langgraph dev`**:
+   - Similar to InMemoryStore but with pseudo-persistence
+   - Data is pickled to the local filesystem between restarts
+   - Lightweight and fast, no need for external databases
+   - Semantic search uses cosine similarity for embedding comparisons
+   - Great for development but not designed for production use
+
+3. **LangGraph Platform or Production Deployments**:
+   - Uses PostgreSQL with pgvector for production-grade persistence
+   - Fully persistent data storage with reliable backups
+   - Scalable for larger datasets
+   - High-performance semantic search via pgvector
+   - Default distance metric is cosine similarity (customizable)
+
+Let's use the `InMemoryStore` here in the notebook! 
+
+```python
+from langgraph.store.memory import InMemoryStore
+in_memory_store = InMemoryStore()
+```
+
+Memories are namespaced by a tuple, which in this specific example will be (`<user_id>`, "memories"). The namespace can be any length and represent anything, does not have to be user specific.
+
+```python
+user_id = "1"
+namespace_for_memory = (user_id, "memories")
+```
+
+We use the `store.put` method to save memories to our namespace in the store. When we do this, we specify the namespace, as defined above, and a key-value pair for the memory: the key is simply a unique identifier for the memory (memory_id) and the value (a dictionary) is the memory itself.
+
+```python
+import uuid
+memory_id = str(uuid.uuid4())
+memory = {"food_preference" : "I like pizza"}
+in_memory_store.put(namespace_for_memory, memory_id, memory)
+```
+
+We can read out memories in our namespace using the `store.search` method, which will return all memories for a given user as a list. The most recent memory is the last in the list. Each memory type is a Python class (`Item`) with certain attributes. We can access it as a dictionary by converting via `.dict` as above. The attributes it has are shown below, but the most important ones is typically `value`.
+
+```python
+memories = in_memory_store.search(namespace_for_memory)
+memories[-1].dict()
+```
+
+To use this in a graph, all we need to do is compile the graph with the store:
+
+```
+# We need this because we want to enable threads (conversations)
+from langgraph.checkpoint.memory import InMemorySaver
+checkpointer = InMemorySaver()
+# We need this because we want to enable across-thread memory
+from langgraph.store.memory import InMemoryStore
+in_memory_store = InMemoryStore()
+# Compile the graph with the checkpointer and store
+graph = graph.compile(checkpointer=checkpointer, store=in_memory_store)
+```
+
+## Memory in LangGraph
+
+Let's take our graph used with HITL and add memory to it.
+
+```python
+%cd ..
+%load_ext autoreload
+%autoreload 2
+```
+
+Here we set up the triage router node, which is the first node in our graph.
+
+```python
 from typing import Literal
 from pydantic import BaseModel
 
@@ -5,14 +106,11 @@ from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
 from langgraph.graph import StateGraph, START, END
-from langgraph.store.base import BaseStore
 from langgraph.types import interrupt, Command
 
-from langmem import create_search_memory_tool, create_memory_store_manager
-
-from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_triage_instructions, default_background, default_response_preferences, default_cal_preferences
+from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_background, default_triage_instructions, default_response_preferences, default_cal_preferences
 from email_assistant.schemas import State, RouterSchema, StateInput
-from email_assistant.utils import parse_email, format_for_display, format_email_markdown, get_memory_profile, get_memory_collection
+from email_assistant.utils import parse_email, format_for_display, format_email_markdown
 
 # Agent tools 
 @tool
@@ -39,14 +137,11 @@ def check_calendar_availability(day: str) -> str:
 class Question(BaseModel):
       """Question to ask user."""
       content: str
-
+    
 @tool
 class Done(BaseModel):
       """E-mail has been sent."""
       done: bool
-    
-# Memory search tools for reading from memory Store 
-background_tool = create_search_memory_tool(namespace=("email_assistant", "background"), name="background")
 
 # All tools available to the agent
 tools = [
@@ -54,8 +149,7 @@ tools = [
     schedule_meeting, 
     check_calendar_availability, 
     Question, 
-    background_tool,
-    Done
+    Done,
 ]
 
 tools_by_name = {tool.name: tool for tool in tools}
@@ -66,10 +160,32 @@ llm_router = llm.with_structured_output(RouterSchema)
 # Initialize the LLM, enforcing tool use (of any available tools) for agent
 llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
 llm_with_tools = llm.bind_tools(tools)
+```
 
-# Memory managers 
+Now, this is the critical part! Right now we log feedback:
+```
+Here is feedback on how the user would prefer the email to be classified
+```
+
+### Memory Management with LangMem
+
+But we don't do anything with it! Let's change that by simply adding the feedback to the memory. What we *want* to do is fairly straightforward: we want to add the feedback to the memory `Store`. If we compile our graph with the store, we can access the store in any node. So that is not a problem! But we have to answer two questions: 1) how do we want the memory to be structured? 2) how do we want to update the memory? 
+
+This is where [LangMem](https://langchain-ai.github.io/langmem/) comes in! LangMem is a lightweight library that can be used on top of the LangGraph Store to provide a more user-friendly API for memory management. We can create a `create_memory_store_manager` that takes care of a few nice things: 
+
+1) it will create a namespace in the `Store` for us 
+2) it will initialize the store with our default instructions (default_triage_instructions)
+3) it allows us to specify if we want a collection `enable_inserts=True` of memories
+4) it allows us to specify if we just want to update one memory "profile" `enable_inserts=False`
+5) it handles updating the memory based upon input messages
+
+```python
+from langmem import create_memory_store_manager
+from email_assistant.prompts import default_triage_instructions
+
+# Feedback memory managers for writing to memory Store 
 triage_feedback_memory_manager = create_memory_store_manager(
-    llm,
+    init_chat_model("openai:gpt-4o", temperature=0.0),
     namespace=("email_assistant", "triage_preferences"),
     instructions="""Extract user email triage preferences into a single set of rules.
     Format the information as a string explaining the criteria for each category.""",
@@ -77,7 +193,85 @@ triage_feedback_memory_manager = create_memory_store_manager(
     enable_deletes=False, # Do not delete profile from memory
     default=default_triage_instructions
 )
+```
 
+Now we can used this in our by directly calling the `invoke` method.
+
+```python
+from langgraph.store.base import BaseStore
+from langmem import create_memory_store_manager
+
+def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal["response_agent", "__end__"]]:
+    """Handles interrupts from the triage step"""
+    
+    # Parse the email input
+    author, to, subject, email_thread = parse_email(state["email_input"])
+
+    # Create email markdown for Agent Inbox in case of notification  
+    email_markdown = format_email_markdown(subject, author, to, email_thread)
+
+    # Create messages to save to memory
+    messages = [{"role": "user",
+                "content": f"Classification Decision: {state['classification_decision']} for email: {email_markdown}"
+                }]
+
+    # Create interrupt for Agent Inbox
+    request = {
+        "action_request": {
+            "action": f"Email Assistant: {state['classification_decision']}",
+            "args": {}
+        },
+        "config": {
+            "allow_ignore": True,  
+            "allow_respond": True, # Allow user feedback if decision is not correct 
+            "allow_edit": False, 
+            "allow_accept": False,  
+        },
+        # Email to show in Agent Inbox
+        "description": email_markdown,
+    }
+
+    # Agent Inbox responds with a list  
+    response = interrupt([request])[0]
+
+    # Accept the decision and end   
+    if response["type"] == "accept":
+        goto = END 
+
+    # If user provides feedback, update memory  
+    elif response["type"] == "response":
+        # Add feedback to messages 
+        user_input = response["args"]
+        messages.append({"role": "user",
+                        "content": f"Here is feedback on how the user would prefer the email to be classified: {user_input}"
+                        })
+        # Update memory with feedback using the memory manager
+        triage_feedback_memory_manager.invoke({"messages": messages})
+        goto = END
+
+    # Update the state 
+    update = {
+        "messages": messages,
+    }
+
+    return Command(goto=goto, update=update)
+```
+
+We can create a memory manager for each memory type we want to store. 
+
+Each memory manager is specialized for a specific type of information the assistant needs to remember. Let's examine how we set up different memory types for our email assistant:
+
+1. **Response Preferences Manager**: This memory manager captures and maintains user preferences for email responses, such as tone, style, and formatting preferences. It uses a "profile" approach (with `enable_inserts=False`) to maintain a single, consolidated set of preferences that get updated over time, rather than creating many discrete memories.
+
+2. **Calendar Preferences Manager**: Similar to response preferences, this manager stores scheduling preferences like preferred meeting durations, times of day, and days of the week. It's also implemented as a profile for consistent reference.
+
+3. **Background Knowledge Manager**: Unlike the preference managers, this one uses a "collection" approach (with `enable_inserts=True`) to accumulate discrete facts about people, projects, and contexts. Each new piece of relevant information becomes a separate memory entry that can be retrieved based on relevance.
+
+The key distinction is in how these memories are updated:
+- Profiles (response and calendar preferences) consolidate feedback into a single document that gets refined over time
+- Collections (background knowledge) grow by adding new discrete memories while potentially removing outdated ones
+
+```python
 response_preferences_memory_manager = create_memory_store_manager(
     llm,
     namespace=("email_assistant", "response_preferences"),
@@ -108,8 +302,13 @@ background_memory_manager = create_memory_store_manager(
     enable_deletes=True, # Since this is a collection, we can delete items (if they are no longer relevant)
     default=default_background
 )
+```
 
-# Nodes 
+### Accessing Memory in the Triage Router
+
+The triage router now leverages stored memory to make more personalized classification decisions. Let's see how memory transforms this function:
+
+```python
 def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_interrupt_handler", "response_agent", "__end__"]]:
     """Analyze email content to decide if we should respond, notify, or ignore.
 
@@ -192,62 +391,13 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
     else:
         raise ValueError(f"Invalid classification: {classification}")
     return Command(goto=goto, update=update)
+```
 
-def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal["response_agent", "__end__"]]:
-    """Handles interrupts from the triage step"""
-    
-    # Parse the email input
-    author, to, subject, email_thread = parse_email(state["email_input"])
+### Incorporating Memory into LLM Responses
 
-    # Create email markdown for Agent Inbox in case of notification  
-    email_markdown = format_email_markdown(subject, author, to, email_thread)
+Now that we have memory managers set up, we need to use the stored preferences when generating responses. The `llm_call` function demonstrates how to retrieve and incorporate memory into the LLM's context:
 
-    # Create messages to save to memory
-    messages = [{"role": "user",
-                "content": f"Classification Decision: {state['classification_decision']} for email: {email_markdown}"
-                }]
-
-    # Create interrupt for Agent Inbox
-    request = {
-        "action_request": {
-            "action": f"Email Assistant: {state['classification_decision']}",
-            "args": {}
-        },
-        "config": {
-            "allow_ignore": True,  
-            "allow_respond": True, # Allow user feedback if decision is not correct 
-            "allow_edit": False, 
-            "allow_accept": False,  
-        },
-        # Email to show in Agent Inbox
-        "description": email_markdown,
-    }
-
-    # Send to Agent Inbox and wait for response
-    response = interrupt([request])[0]
-
-    # Accept the decision and end   
-    if response["type"] == "accept":
-        goto = END 
-
-    # If user provides feedback, update memory  
-    elif response["type"] == "response":
-        # Add feedback to messages 
-        user_input = response["args"]
-        messages.append({"role": "user",
-                        "content": f"Here is feedback on how the user would prefer the email to be classified: {user_input}"
-                        })
-        # Update memory with feedback using the memory manager
-        triage_feedback_memory_manager.invoke({"messages": messages})
-        goto = END
-
-    # Update the state 
-    update = {
-        "messages": messages,
-    }
-
-    return Command(goto=goto, update=update)
-
+```python
 def llm_call(state: State, store: BaseStore):
     """LLM decides whether to call a tool or not"""
 
@@ -270,7 +420,19 @@ def llm_call(state: State, store: BaseStore):
             )
         ]
     }
+```
+
+### Memory Integration in the Interrupt Handler
+
+The interrupt handler is where memory truly shines, as it's responsible for capturing user feedback and using it to update our various memory stores. This function showcases how we:
+
+1. **Process User Feedback**: When a user edits an email response or provides feedback, we capture that information
+2. **Update Relevant Memory**: We route the feedback to the appropriate memory manager based on the context
+3. **Learn Continuously**: Each interaction becomes a learning opportunity for the system
+
+Let's break down the key memory interactions:
     
+```python
 def interrupt_handler(state: State, store: BaseStore):
     """Creates an interrupt for human review of tool calls"""
     
@@ -432,6 +594,11 @@ def interrupt_handler(state: State, store: BaseStore):
                 })
 
     return {"messages": result}
+```
+
+This is the same as before. 
+
+```python
 
 # Conditional edge function
 def should_continue(state: State) -> Literal["interrupt_handler", END]:
@@ -475,5 +642,74 @@ overall_workflow = (
     .add_node("response_agent", response_agent)
     .add_edge(START, "triage_router")
 )
+```
 
-email_assistant = overall_workflow.compile()
+Now, we can compile the graph with the store.
+```python
+import uuid 
+from langgraph.checkpoint.memory import MemorySaver
+checkpointer = MemorySaver()
+store = InMemoryStore()
+
+# Respond
+email_input =  {
+    "to": "Lance Martin <lance@company.com>",
+    "author": "Project Manager <pm@client.com>",
+    "subject": "Tax season let's schedule call",
+    "email_thread": "Lance,\n\nIt's tax season again, and I wanted to schedule a call to discuss your tax planning strategies for this year. I have some suggestions that could potentially save you money.\n\nAre you available sometime next week? Tuesday or Thursday afternoon would work best for me, for about 45 minutes.\n\nRegards,\nProject Manager"
+}
+
+# Compile the graph
+graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
+thread_config = {"configurable": {"thread_id": uuid.uuid4()}}
+
+# Run the graph until the first interrupt
+for chunk in graph.stream({"email_input": email_input}, config=thread_config):
+   print(chunk)
+```
+
+Add feedback:
+```python
+from langgraph.types import Command
+# response = adds FEEDBACK for future reference, which is not use yet! We need memory to use it.
+for chunk in graph.stream(Command(resume=[{"type": "response", 
+                                          "args": "Always use 30 minute calls in the future!'"}]), config=thread_config):
+   print(chunk)
+```
+
+Accept all other tool calls:
+```python
+# Accept the invite
+for chunk in graph.stream(Command(resume=[{"type": "accept", 
+                                          "args": ""}]), config=thread_config):
+   print(chunk)
+```
+
+See that our feedback is now in the `cal_preferences` memory:
+```python
+# See that our feedback is now in the memory
+results = store.search(("email_assistant", "cal_preferences"))
+results[0].value['content']
+```
+
+## Testing with Local Deployment
+
+You can find this graph in the `src/email_assistant` directory:
+
+* `src/email_assistant/email_assistant_hitl_memory.py`
+
+You can test it locally in LangGraph Studio by running:
+
+```python
+! langgraph dev
+```
+
+![inbox](img/agent-inbox-edit.png)
+
+As you provide feedback or edit replies, you can see memories accumulate in the `memory` tab in LangGraph Studio.
+
+![studio-img](img/memory-studio.png)
+
+
+
+
