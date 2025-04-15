@@ -116,17 +116,13 @@ python run_all_tests.py --rich-output
 python run_all_tests.py --experiment-name "April8Fix"
 ```
 
-When we run the script, it runs these tests:
+When we run the script, it runs this test:
 ```bash
 python -m pytest tests/test_response.py -v
-python -m pytest tests/test_hitl.py -v
-python -m pytest tests/test_memory.py -v
 ```
 
-These modules test different aspects of functionality:
+This module tests:
 - `test_response.py` - Tests response generation and tool calling
-- `test_hitl.py` - Tests human-in-the-loop functionality
-- `test_memory.py` - Tests memory updates and preference learning
 
 Each test is marked with `@pytest.mark.langsmith` to log inputs, outputs, and results to LangSmith, providing detailed traces for analysis. Tests are parametrized to run against the test cases defined in `email_dataset.py`. Each test case is individually logged to LangSmith, allowing detailed performance analysis: 
 

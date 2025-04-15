@@ -45,6 +45,7 @@ tools_by_name = {tool.name: tool for tool in tools}
 # Initialize the LLM for use with router / structured output
 llm = init_chat_model("openai:gpt-4o", temperature=0.0)
 llm_router = llm.with_structured_output(RouterSchema) 
+
 # Initialize the LLM, enforcing tool use (of any available tools) for agent
 llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
 llm_with_tools = llm.bind_tools(tools)
@@ -58,8 +59,8 @@ def llm_call(state: State):
             llm_with_tools.invoke(
                 [
                     {"role": "system", "content": agent_system_prompt.format(background=default_background,
-                                       response_preferences=default_response_preferences, 
-                                       cal_preferences=default_cal_preferences)
+                                                                             response_preferences=default_response_preferences, 
+                                                                             cal_preferences=default_cal_preferences)
                     },
                     
                 ]
@@ -131,17 +132,29 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
         author=author, to=to, subject=subject, email_thread=email_thread
     )
 
+    # Create email markdown for Agent Inbox in case of notification  
+    email_markdown = format_email_markdown(subject, author, to, email_thread)
+
+    # Run the router LLM
     result = llm_router.invoke(
         [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
     )
-    if result.classification == "respond":
+
+    # Decision
+    classification = result.classification
+
+    if classification == "respond":
         print("📧 Classification: RESPOND - This email requires a response")
         goto = "response_agent"
+        # Add the email to the messages
         update = {
             "classification_decision": result.classification,
+            "messages": [{"role": "user",
+                            "content": f"Respond to the email: {email_markdown}"
+                        }],
         }
     elif result.classification == "ignore":
         print("🚫 Classification: IGNORE - This email can be safely ignored")

@@ -493,7 +493,17 @@ for m in response["messages"]:
     m.pretty_print()
 ```
 
+## Testing with Local Deployment
+
 You can find files for these in the `src/email_assistant` directory:
 
 * `src/email_assistant/baseline_agent.py` 
 * `src/email_assistant/email_assistant.py`
+
+You can test them locally in LangGraph Studio by running:
+
+```python
+! langgraph dev
+```
+
+![studio-img](img/studio.png)

@@ -17,16 +17,18 @@ How can we compare them? [LangSmith](https://docs.smith.langchain.com/) offers t
 
 ### LangSmith Datasets 
 
-You can also create a dataset [in LangSmith](https://docs.smith.langchain.com/evaluation) and run each assistant against the dataset using the LangSmith evaluate API. This has some useful features, such as the ability to directly use the results from custom visualizations, as we'll see. 
+You can also create a dataset [in LangSmith](https://docs.smith.langchain.com/evaluation) and run each assistant against the dataset using the LangSmith evaluate API. TODO: Add just pro/con comparing the two approaches. 
 
 ## Test Cases
 
-Both evaluation approaches use a common structure for test data:
+Testing starts with defining the test cases. We'll use the following:
 
 1. **Input Emails**: A collection of diverse email examples
-2. **Ground Truth Classifications**: Respond, notify, ignore
+2. **Ground Truth Classifications**: `Respond`, `Notify`, `Ignore`
 3. **Expected Tool Calls**: Tools called for each email that requires a response
 4. **Response Criteria**: What makes a good response for emails requiring replies
+
+You can see the test cases in `eval/email_dataset.py`.
 
 ## Pytest Example
 
@@ -83,18 +85,19 @@ def test_email_dataset_tool_calls(email_input, expected_calls):
     assert len(missing_calls) == 0
 ```
 
-To [run with Pytest and log test results to LangSmith](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest), we only need to add the `@pytest.mark.langsmith ` decorator to our function and place it in a file, as you see in `test_tools.py`. 
+You'll notice a few things:
 
-Note that we pass examples to the function shown [here](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest#parametrize-with-pytestmarkparametrize) via `@pytest.mark.parametrize`. 
+First, to [run with Pytest and log test results to LangSmith](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest), we only need to add the `@pytest.mark.langsmith ` decorator to our function and place it in a file, as you see in `notebooks/test_tools.py`. 
 
+Second, we can pass dataset examples to the test function as shown [here](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest#parametrize-with-pytestmarkparametrize) via `@pytest.mark.parametrize`. 
 
-We can run the test:
+We can run the test from the command line as shown below. We can view the results in the LangSmith UI. The `assert len(missing_calls) == 0` is logged to the `Pass` column in LangSmith. The `log_outputs` are passed to the `Outputs` column and function arguments are passed to the `Inputs` column. From  the project root, run:
 
-```bash
-$ LANGSMITH_TEST_SUITE='Email assistant: Test Tools'  pytest notebooks/test_tools.py
+```
+! LANGSMITH_TEST_SUITE='Email assistant: Test Tools'  pytest notebooks/test_tools.py
 ```
 
-We can view the results in the LangSmith UI. The `assert len(missing_calls) == 0` is logged to the `Pass` column in LangSmith. The `log_outputs` are passed to the Outputs column and function arguments are passed to the Inputs column.
+Each input passed in `@pytest.mark.parametrize(` is a separate row logged to the `LANGSMITH_TEST_SUITE` project name in LangSmith, which is found under `Datasets & Experiments`.
 
 ![Test Results](img/test_result.png)
 
@@ -102,7 +105,7 @@ We can view the results in the LangSmith UI. The `assert len(missing_calls) == 0
 
 ### Dataset Definition 
 
-We can also [create a dataset in LangSmith](https://docs.smith.langchain.com/evaluation/how_to_guides/manage_datasets_programmatically#create-a-dataset) with the SDK. 
+In addition to the Pytest approach, we can also [create a dataset in LangSmith](https://docs.smith.langchain.com/evaluation/how_to_guides/manage_datasets_programmatically#create-a-dataset) with the SDK. This creates a dataset with the test cases in the `eval/email_dataset.py` file.
 
 ```python
 from langsmith import Client
@@ -130,9 +133,7 @@ if not client.has_dataset(dataset_name=dataset_name):
 
 ### Run Agents 
 
-The dataset pulls from the `eval/email_dataset.py` file.
-
-It has the following structure:
+The dataset has the following structure, with an e-mail input and a ground truth classification for the e-mail as output.
 
 ```python
 examples_triage = [
@@ -143,50 +144,40 @@ examples_triage = [
 ]
 ```
 
-We define functions that take dataset inputs and pass them to each agent: 
+We define functions that take dataset inputs and pass them to each agent we want to evaluate. The function just takes the `inputs` dict from the dataset and passes it to the agent. It returns a dict with the agent's output.
 
 ```python
 def target_email_assistant(inputs: dict) -> dict:
     """Process an email through the workflow-based email assistant."""
-    try:
-        response = email_assistant.invoke({"email_input": inputs["email_input"]})
-        if "classification_decision" in response:
-            return {"classification_decision": response['classification_decision']}
-        else:
-            return {"classification_decision": "unknown"}
-    except Exception as e:
-        print(f"Error in workflow agent: {e}")
-        return {"classification_decision": "unknown"}
+    response = email_assistant.invoke({"email_input": inputs["email_input"]})
+    return {"classification_decision": response['classification_decision']}
 
 def target_email_assistant_baseline(inputs: dict) -> dict:
     """Process an email through the baseline email assistant."""
-    try:
-        # Format a better prompt for the baseline agent
-        email_content = inputs["email_input"]
-        formatted_content = f"""
+    # Format email for the baseline agent
+    email_content = inputs["email_input"]
+    formatted_content = f"""
 From: {email_content.get('author', 'Unknown')}
 To: {email_content.get('to', 'Unknown')}
 Subject: {email_content.get('subject', 'No Subject')}
 
 {email_content.get('email_thread', '')}
 """
-        messages = [{"role": "user", "content": f"Please triage this email: {formatted_content}"}]
-        
-        response = baseline_agent.invoke({"messages": messages})
-        if "classification_decision" in response:
-            return {"classification_decision": response['classification_decision']}
-        else:
-            return {"classification_decision": "unknown"}
-    except Exception as e:
-        print(f"Error in baseline agent: {e}")
-        return {"classification_decision": "unknown"}
+    messages = [{"role": "user", "content": f"Please triage this email: {formatted_content}"}]
+    response = baseline_agent.invoke({"messages": messages})
+    return {"classification_decision": response['classification_decision']}
 ```
 
-The LangSmith evaluate API passes the `inputs` dict to this function. 
+The LangSmith [evaluate API](https://docs.smith.langchain.com/evaluation) passes the `inputs` dict to this function. 
 
 ### Evaluator Function 
 
-We also create an evaluator function. The LangSmith evaluate API passes the `output` dict from our dataset (`reference_outputs["classification"]`)to this function. It also passes the output of the agent (`outputs["classification_decision"]`) to be evaluated.
+We also create an evaluator function. What do we want to evaluate? We have reference outputs in our dataset and agent outputs defined in the functions above.
+
+* Reference outputs: `"outputs": {"classification": triage_output_1} ...`
+* Agent outputs: `"outputs": {"classification_decision": agent_output_1} ...`
+
+We want to evaluate if the agent's output matches the reference output. So we simply need a an evaluator function that compares the two, where `outputs` is the agent's output and `reference_outputs` is the reference output from the dataset.
 
 ```python
 def classification_evaluator(outputs: dict, reference_outputs: dict) -> bool:
@@ -196,7 +187,7 @@ def classification_evaluator(outputs: dict, reference_outputs: dict) -> bool:
 
 ### Running Evaluation
 
-We run evaluations for both the baseline agent and the workflow-based agent using the LangSmith evaluate API, which passes the `inputs` dict from our dataset the target function and the `outputs` dict from our dataset to the evaluator function:
+Now, the question is: how are these things hooked together? The evaluate API takes care of it for us. It passes the `inputs` dict from our dataset the target function. It passes the `outputs` dict from our dataset to the evaluator function. And it passes the output of our agent to the evaluator function.
 
 ```python
 experiment_results_baseline = client.evaluate(
@@ -226,13 +217,13 @@ experiment_results_workflow = client.evaluate(
 )
 ```
 
-We can view the results in the LangSmith UI.
+We can view the results from both experiments in the LangSmith UI.
 
 ![Test Results](img/eval.png)
 
 ### Getting Results
 
-We can easily get the results of the evaluation. This is great if we want to create a visualization to compare the performance of the two agent types:
+We can also get the results of the evaluation, which are returned as `EvaluationResult` objects and can be converted to pandas dataframes. This is great if we want to create our own visualizations to compare the performance of the two agents:
 
 ```python
 # Convert evaluation results to pandas dataframes

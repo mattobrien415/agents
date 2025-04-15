@@ -95,22 +95,18 @@ def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "
 
     # Decision
     classification = result.classification
-    messages = [{"role": "user",
-                "content": f"Classification Decision: {classification}"
-                }]
 
     # Process the classification decision
     if classification == "respond":
         print("📧 Classification: RESPOND - This email requires a response")
         # Next node
         goto = "response_agent"
-        # Add the email to the messages
-        messages.append({"role": "user",
-                            "content": f"Respond to the email: {email_markdown}"
-                            })
         # Update the state
         update = {
-            "classification_decision": classification,
+            "classification_decision": result.classification,
+            "messages": [{"role": "user",
+                            "content": f"Respond to the email: {email_markdown}"
+                        }],
         }
     elif classification == "ignore":
         print("🚫 Classification: IGNORE - This email can be safely ignored")

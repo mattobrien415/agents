@@ -37,7 +37,7 @@ def format_messages(messages):
 
 def format_email_markdown(subject, author, to, email_thread):
     """Format email details into a nicely formatted markdown string for display"""
-    return f"""# Original Email
+    return f"""
 
 **Subject**: {subject}
 **From**: {author}
@@ -85,9 +85,13 @@ def format_for_display(state, tool_call):
         # Generic format for other tools
         display += f"""# Tool Call: {tool_call["name"]}
 
-Arguments:
-{json.dumps(tool_call["args"], indent=2)}
-"""
+Arguments:"""
+        
+        # Check if args is a dictionary or string
+        if isinstance(tool_call["args"], dict):
+            display += f"\n{json.dumps(tool_call['args'], indent=2)}\n"
+        else:
+            display += f"\n{tool_call['args']}\n"
     return display
 
 def parse_email(email_input: dict) -> dict:
@@ -209,3 +213,63 @@ def format_messages_string(messages: List[Any]) -> str:
     sys.stdout = old_stdout
     
     return output
+
+def get_memory_profile(store, namespace, default_content, memory_manager):
+    """Get memory profile from the store or initialize with default if it doesn't exist.
+    
+    Args:
+        store: LangGraph BaseStore instance to search for existing memory
+        namespace: Tuple defining the memory namespace, e.g. ("email_assistant", "triage_preferences")
+        default_content: Default content to use if memory doesn't exist
+        memory_manager: Memory manager to use for initializing and updating memory
+        
+    Returns:
+        str: The content of the memory profile, either from existing memory or the default
+    """
+    # Search for existing memory
+    results = store.search(namespace)
+    
+    # If memory exists, return its content
+    if results:
+        return results[0].value['content']['content']
+    
+    # If memory doesn't exist, add it to the store
+    # Need to set a key that will be used by the memory manager to update the memory
+    if not results:
+        store.put(namespace, "content", default_content)
+    
+    # Return the default content
+    return default_content
+
+
+def get_memory_collection(store, namespace, default_content, memory_manager=None):
+    """Get a collection of memories from the store or initialize with default if it doesn't exist.
+    
+    For memory types like background that may contain multiple entries.
+    
+    Args:
+        store: LangGraph BaseStore instance to search for existing memory
+        namespace: Tuple defining the memory namespace, e.g. ("email_assistant", "background")
+        default_content: Default content to use if memory doesn't exist
+        memory_manager: Optional memory manager to use for initializing memory
+        
+    Returns:
+        str: The concatenated content of all memories, or the default content if none exist
+    """
+    # Search for existing memories
+    results = store.search(namespace)
+    
+    # If memories exist, concatenate all their contents
+    if results:
+        # Handle collection of memory objects
+        memories = []
+        for result in results:
+            memories.append(result.value['content']['content'])
+        return "\n".join(memories)
+    
+    # If no memories exist and we have a manager, initialize with default
+    if not results and memory_manager:
+        memory_manager.invoke({"messages": [{"role": "user", "content": default_content}]})
+    
+    # Return the default content
+    return default_content

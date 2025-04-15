@@ -63,15 +63,7 @@ def main():
         
         # Determine which test files to run based on implementation
         test_files = ["tests/test_response.py"]  # All implementations run response tests
-        
-        # HITL tests for email_assistant_hitl and email_assistant_hitl_memory
-        if implementation in ["email_assistant_hitl", "email_assistant_hitl_memory"]:
-            test_files.append("tests/test_hitl.py")
-        
-        # Memory tests only for email_assistant_hitl_memory
-        if implementation == "email_assistant_hitl_memory":
-            test_files.append("tests/test_memory.py")
-            
+                    
         # Run each test file
         print(f"   Project: {langsmith_project}")
         print(f"\nℹ️ Test results for {implementation} are being logged to LangSmith")

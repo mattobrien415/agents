@@ -186,6 +186,14 @@ When handling emails, follow these steps:
 11. After calling the write_email tool, the task is complete
 12. If you have sent the email, then use the Done tool to indicate that the task is complete
 </ Instructions >
+
+< Response Preferences >
+{response_preferences}
+</ Response Preferences >
+
+< Calendar Preferences >
+{cal_preferences}
+</ Calendar Preferences >
 """
 
 # Default background information 
