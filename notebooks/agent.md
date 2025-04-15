@@ -506,4 +506,14 @@ You can test them locally in LangGraph Studio by running:
 ! langgraph dev
 ```
 
+Example e-mail you can test:
+```python
+email_input = {
+  "author": "Alice Smith <alice.smith@company.com>",
+  "to": "John Doe <john.doe@company.com>",
+  "subject": "Quick question about API documentation",
+  "email_thread": "Hi John,\nI was reviewing the API documentation for the new authentication service and noticed a few endpoints seem to be missing from the specs. Could you help clarify if this was intentional or if we should update the docs?\nSpecifically, I'm looking at:\n- /auth/refresh\n- /auth/validate\nThanks!\nAlice"
+}
+```
+
 ![studio-img](img/studio.png)

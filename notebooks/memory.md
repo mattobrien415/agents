@@ -1,4 +1,4 @@
-# Personalized Email Assistant with Memory
+# Memory (WIP)
 
 In this final enhancement of our email assistant, we add a powerful memory component that enables the assistant to learn from user feedback and adapt to personal preferences over time. This memory-enabled system creates a truly personalized experience, allowing the assistant to become increasingly effective with each interaction.
 
@@ -475,3 +475,86 @@ In the LangGraph Studio, we can view the memories accumulated in the "Memory" st
 5. **Trust Building**: As the assistant becomes more aligned with user preferences, trust increases
 
 By combining human-in-the-loop feedback with persistent memory, we've created an assistant that truly learns and improves over time, offering increasingly personalized email assistance.
+
+
+
+### Memory Architecture
+
+Each memory type is updated through specialized components, which can take in messages and update the memory. 
+
+```
+triage_feedback_memory_manager = create_memory_store_manager(
+    llm,
+    namespace=("email_assistant", "triage_preferences"),
+    instructions="Extract user email triage preferences into a single set of rules"
+)
+```
+
+The system also includes specialized tools to search these memories, which the agent can use to fetch memories when needed:
+
+```
+response_preferences_tool = create_search_memory_tool(
+    namespace=("email_assistant", "response_preferences")
+)
+```
+
+### Learning From Feedback
+
+The assistant updates its memory in several key scenarios:
+
+#### 1. Triage Classification Feedback
+
+When the assistant classifies an email as "notify" and sends it to Agent Inbox, you have options:
+
+* **Accept**: The classification stands without memory updates
+* **Provide Feedback**: Your feedback (e.g., "This should be classified as 'respond'") is processed by the `triage_feedback_memory_manager`, which extracts rules and updates the triage preferences memory
+
+This gradually improves the assistant's understanding of which emails should fall into each category.
+
+#### 2. Email Response Editing
+
+When reviewing a draft email response in Agent Inbox:
+
+* **Edit Mode**: When you edit the content of a response, the assistant doesn't just use your edits for that specific email - it also updates its `response_preferences_memory` with insights from your changes
+* **Feedback Mode**: Any comments you provide about the response style, tone, or content are stored as response guidelines
+
+For example, if you consistently edit greetings from "Hello" to "Hi" or add more technical details to responses, the assistant learns these preferences over time.
+
+#### 3. Meeting Scheduling Feedback
+
+When the assistant proposes scheduling a meeting:
+
+* **Edit Meeting Details**: If you change meeting duration, preferred days, or other parameters, these updates are stored in `calendar_preferences_memory`  
+* **Provide Scheduling Guidelines**: Any direct feedback about scheduling preferences is processed and stored
+
+This might include learning that you prefer morning meetings, specific meeting durations, or avoiding certain days.
+
+#### 4. Background Information Accumulation
+
+The assistant continuously builds its knowledge base about your work context:
+
+* Every message provides potential background information about projects, team members, and organizational context
+* This information is automatically extracted and stored in background_memory
+* Future interactions then have access to this growing knowledge base
+
+For example, if an email mentions a project deadline or a team member's role, this information becomes available for future reference.
+
+### Memory Benefits
+
+This semantic memory approach offers several key advantages:
+
+1. **Personalization**: The assistant adapts to your specific preferences rather than using generic rules
+2. **Efficiency**: You don't need to repeat the same feedback - the assistant learns from each interaction
+3. **Context Awareness**: Background memory helps the assistant understand references to projects and people
+4. **Continuous Improvement**: The system gets more accurate over time through regular use and feedback
+
+### Running the Memory-Enabled Assistant
+
+To use the memory-enabled version, you can reference the `langgraph.json` file:
+```json
+"graphs": {
+    "email_assistant": "./src/email_assistant/email_assistant_hitl_memory.py:email_assistant",
+},
+```
+
+This graph uses feedback from HITL (Agent Inbox) to update the memory. 

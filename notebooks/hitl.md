@@ -515,7 +515,6 @@ The `interrupt_handler` is the core HITL component of our response agent. Its jo
 This handler ensures humans have oversight of all significant actions while allowing routine operations to proceed automatically. The ability to edit tool arguments (like email content or meeting details) gives users precise control over the assistant's actions.
 
 ```python
-
 def interrupt_handler(state: State):
     """Creates an interrupt for human review of tool calls"""
     
@@ -648,7 +647,7 @@ def interrupt_handler(state: State):
     return {"messages": result}
 ```
 
-### The Complete HITL Email Assistant Workflow
+### HITL Email Assistant Workflow
 
 Now we can integrate everything into a complete workflow that connects all the components. The workflow consists of two main parts:
 
@@ -678,7 +677,6 @@ This architecture provides a clean separation of concerns, with distinct compone
 The final graph visualization shows the complete flow from email input through triage and, when necessary, through the response generation process with human oversight at each significant step.
 
 ```python
-
 # Conditional edge function
 def should_continue(state: State) -> Literal["interrupt_handler", END]:
     """Route to tool handler, or end if Done tool called"""
@@ -727,7 +725,16 @@ email_assistant = overall_workflow.compile()
 display(Image(email_assistant.get_graph().draw_mermaid_png()))
 ```
 
-### Feedback
+### Providing Feedback on Email Responses
+
+Let's see the HITL workflow in action with a practical example. Here we'll demonstrate how a user can provide feedback on the assistant's proposed actions. This example shows how to:
+
+1. Process an incoming email about scheduling a tax planning call
+2. Review the assistant's proposed action in Agent Inbox
+3. Provide feedback without changing the proposal
+4. Complete the workflow with the feedback incorporated
+
+This demonstration shows the **response** interaction type in Agent Inbox, which allows users to provide guidance without directly editing the action.
 
 ```python
 import uuid 
@@ -754,20 +761,26 @@ for chunk in graph.stream({"email_input": email_input}, config=thread_config):
 
 ```python
 from langgraph.types import Command
-# response = adds FEEDBACK for future reference, which is not use yet! We need memory to use it.
+# First, we respond with feedback about meeting duration
+# This sends a "response" type interaction from Agent Inbox
+# The feedback suggests shorter meetings (30 mins instead of 45 mins)
 for chunk in graph.stream(Command(resume=[{"type": "response", 
                                           "args": "Let's suggest 30 minute calls in the future!'"}]), config=thread_config):
    print(chunk)
 ```
 
 ```python
+# Here we can examine the interrupt object to understand what action was proposed
+# This shows the details of the action the agent wanted to take
 Interrupt_Object = chunk['__interrupt__'][0]
 Interrupt_Object.value[0]['action_request']
 ``` 
 
 ```python
 from langgraph.types import Command
-# Accept the email to send
+# Now we accept the tool execution (likely to schedule a meeting)
+# This simulates clicking the "Accept" button in Agent Inbox
+# The original action will proceed as planned, but our feedback is recorded
 for chunk in graph.stream(Command(resume=[{"type": "accept", 
                                           "args": ""}]), config=thread_config):
    print(chunk)
@@ -779,7 +792,19 @@ for m in state.values['messages']:
     m.pretty_print()
 ```
 
-### Edit
+### Editing Proposed Actions
+
+Now let's look at a more direct form of human intervention: editing the assistant's proposed actions before they're executed. This example demonstrates how to:
+
+1. Process the same email about tax planning
+2. Review the assistant's proposed meeting scheduling in Agent Inbox
+3. Edit the meeting details (attendees, subject, duration, and date)
+4. Accept the edited action for execution
+
+This demonstrates the **edit** interaction type in Agent Inbox, which allows users to modify the details of an action before approving it. This is particularly useful for:
+- Correcting meeting parameters
+- Adjusting email content before sending
+- Fine-tuning any action that requires precision
 
 ```python
 # Compile the graph
@@ -793,7 +818,12 @@ for chunk in graph.stream({"email_input": email_input}, config=thread_config):
 ```
 
 ```python
-# edit = edits the tool call ('action': 'schedule_meeting')
+# Here we edit the meeting details before they're confirmed
+# This simulates using the edit feature in Agent Inbox to modify:
+# 1. The attendee list (ensuring both parties are included)
+# 2. The meeting subject (making it more descriptive)
+# 3. The duration (reducing from 45 to 30 minutes)
+# 4. The specific date (setting an exact day rather than a general preference)
 for chunk in graph.stream(Command(resume=[{"type": "edit",  
                                            "args": {"args": {"attendees": ['pm@client.com', 'lance@company.com'],
                                                              "subject": "Tax Planning Strategies Discussion",
@@ -805,9 +835,57 @@ for chunk in graph.stream(Command(resume=[{"type": "edit",
 ```
 
 ```python
-# Accept the email to send
+# After editing, we need to accept the final action
+# This simulates clicking "Accept" in Agent Inbox after making edits
+# The tool will execute with our edited parameters instead of the original ones
 for chunk in graph.stream(Command(resume=[{"type": "accept", 
                                           "args": ""}]), config=thread_config):
    print(chunk)
 ```
 
+## Testing with Local Deployment
+
+You can find this graph in the `src/email_assistant` directory:
+
+* `src/email_assistant/email_assistant_hitl.py`
+
+You can test it locally in LangGraph Studio by running:
+
+```python
+! langgraph dev
+```
+
+Example e-mail you can test:
+```python
+email_input = {
+  "author": "Alice Smith <alice.smith@company.com>",
+  "to": "John Doe <john.doe@company.com>",
+  "subject": "Quick question about API documentation",
+  "email_thread": "Hi John,\nI was reviewing the API documentation for the new authentication service and noticed a few endpoints seem to be missing from the specs. Could you help clarify if this was intentional or if we should update the docs?\nSpecifically, I'm looking at:\n- /auth/refresh\n- /auth/validate\nThanks!\nAlice"
+}
+```
+
+When you submit the e-mail, you will see the interrupt in Studio. This displays the full `request` object that was passed to the `interrupt` function.
+
+![studio-img](img/studio-interrupt.png)
+ 
+If you go to [dev.agentinbox.ai](https://dev.agentinbox.ai/), you can add the graph url:
+   * Graph name: the name from the `langgraph.json` file (`email_assistant_hitl`)
+   * Graph URL: `http://127.0.0.1:2024/`
+
+All interrupted threads run will be visible. Any e-mail triaged to `Notify` will be displayed in Agent Inbox with the action request in `triage_interrupt_handler`, allowing you to ignore or respond with feedback. In addition, any email marked with `Respond` will be displayed in Agent Inbox with the action request in `interrupt_handler`, allowing you to review tool calls from `["write_email", "schedule_meeting", "Question"]`.
+
+![agent-inbox-img](img/agent-inbox.png)
+
+In the case of `write_email`, you can fully edit the e-mail content, accept it as-is, ignore it, or provide feedback as specified in the `config` argument:
+
+```python
+config = {
+    "allow_ignore": True,
+    "allow_respond": True,
+    "allow_edit": True,
+    "allow_accept": True,
+}
+```
+
+![agent-inbox-img](img/agent-inbox-draft.png)
