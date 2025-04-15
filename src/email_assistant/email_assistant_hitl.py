@@ -288,7 +288,6 @@ def interrupt_handler(state: State):
             # Save feedback in memory and update the write_email tool call with the edited content from Agent Inbox
             if tool_call["name"] == "write_email":
                 
-                # TODO (discuss w/ Vadym): FIND BETTER WAY TO HANDLE THIS 
                 # Update the AI message's tool call with edited content (reference to the message in the state)
                 ai_message = state["messages"][-1]
                 current_id = tool_call["id"]
