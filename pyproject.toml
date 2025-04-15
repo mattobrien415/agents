@@ -8,7 +8,7 @@ dependencies = [
     "langchain-anthropic",
     "langchain-openai",
     "langgraph",
-    "langmem>=0.0.20",
+    "langmem>=0.0.23",
     "langsmith[pytest]>=0.3.4",
     "pandas",
     "matplotlib",

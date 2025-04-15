@@ -367,7 +367,7 @@ examples_triage = [
       "outputs": {"classification": triage_output_1},
   },
   {
-      "inputs": {"email_input": email_input_2},
+      "inputs": {"emaexamples_triageil_input": email_input_2},
       "outputs": {"classification": triage_output_2},
   },
   {
