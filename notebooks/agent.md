@@ -1,6 +1,6 @@
 # Self-Improving Email Assistant
 
-AI agents promise to transform how we work, but there's often a gap between hype and reality: to truly act on our behalf, agents need to learn and remember our preferences for personalization. In this workshop, we're going to show how to build self-improving and personalized agents from scratch using LangChain, LangGraph, and LangSmith. 
+AI agents promise to transform how we work, but there's often a gap between hype and reality: to truly act on our behalf, agents need to learn and remember our preferences for personalization. In this repo, we're going to show how to build self-improving and personalized agents from scratch using LangChain, LangGraph, and LangSmith. 
  
 We're going to build an agent that can act an an e-mail assistant, because this is often a rather tedious task that could benefit from an AI assistant, but it requires a high level of personalization (e.g., what to respond to, what to ignore, what to schedule a meeting for, and how to respond). 
 
@@ -10,13 +10,13 @@ Below is an overview of the email assistant we'll build with 1) the agent archit
 
 ## What are Agents?
 
-[Agents](https://langchain-ai.github.io/langgraph/tutorials/workflows/) are systems where language models (LLMs) dynamically direct their own processes and tool usage. Unlike simple workflows with predefined paths, agents can make decisions about which actions to take based on their understanding of a task. Agents are particularly valuable for open-ended problems like email, where it's difficult to predict the *exact* steps needed in advance. Some emails can be ignored, some can be responded to directly, and some need coordination with tools (e.g, scheduling a meeting). As you will see, agents are typically implemented [using tool calling in a loop](https://python.langchain.com/docs/concepts/tool_calling/). 
+[Agents](https://langchain-ai.github.io/langgraph/tutorials/workflows/) are systems where language models (LLMs) dynamically direct their own processes and tool usage. Unlike workflows with predefined paths, agents can make decisions about which actions to take based on their understanding of a task. Agents are particularly valuable for open-ended problems like email management, where it's difficult to predict the *exact* steps needed in advance: some emails can be responded to directly and some need coordination with tools (e.g, scheduling a meeting).
 
 ![agent-img](img/agent.png)
 
 ### Tool Definition
 
-Our agent will use tools to interact with its environment. In LangChain/Graph, tools are easy to define: we can use Python functions with the [@tool decorator](https://python.langchain.com/docs/concepts/tools/) or [MCP servers](https://github.com/langchain-ai/langchain-mcp-adapters). Let's start by defining some simple tools that an email assistant will use using the `@tool` decorator:
+ As you will see, agents are typically implemented [using tool calling in a loop](https://python.langchain.com/docs/concepts/tool_calling/). Tools let agents interact with their environment. In LangChain/Graph, tools are easy to define: we can just use Python functions with the [@tool decorator](https://python.langchain.com/docs/concepts/tools/) or [MCP servers](https://github.com/langchain-ai/langchain-mcp-adapters). Let's start by defining some simple tools that an email assistant will use with the `@tool` decorator:
 
 ```python
 from typing import Literal
@@ -72,11 +72,9 @@ llm_with_tools = llm.bind_tools(tools)
 
 ## Agent Orchestration with LangGraph
 
-Now we have an LLM with tools; how can we orchestrate it as an agent? 
+Now we have an LLM with tools; how can we orchestrate it as an agent? This is where LangGraph comes in. We can create an agent using LangGraph's [pre-built method](https://langchain-ai.github.io/langgraph/tutorials/workflows/#pre-built) by passing in the LLM, tools, and prompt. 
 
 ![overview-img](img/overview_agent.png)
-
-This is where LangGraph comes in. We can create an agent using LangGraph's [pre-built method](https://langchain-ai.github.io/langgraph/tutorials/workflows/#pre-built) by passing in the LLM, tools, and prompt. 
 
 ```python
 from langgraph.prebuilt import create_react_agent
@@ -145,9 +143,7 @@ for m in response["messages"]:
     m.pretty_print()
 ```
 
-We mentioned that agents typically use tool calling in a loop. [ReAct](https://arxiv.org/abs/2210.03629) is an architecture that implements this, using a loop of reasoning and tool calling that only exits when the LLM decides to no longer call any tools.
-
-Because some users may want to understand what happens under the hood when we using the `create_react_agent` pre-built method, below we'll break down the components of the agent in detail. 
+We mentioned that agents typically use tool calling in a loop. [ReAct](https://arxiv.org/abs/2210.03629) is an architecture that implements this, using a loop of reasoning and tool calling that only exits when the LLM decides to no longer call any tools. To understand what happens under the hood when we using the `create_react_agent` pre-built method, below we'll break down the components of the agent in detail. 
 
 ### Agent State
 
@@ -347,28 +343,28 @@ This implementation demonstrates a tool calling agent that alternates between re
 
 ## Workflows vs. Agents
 
-We can see that it's easy to build an agent using LangGraph. But, what if we want to add more tools? You'll notice that the agent's prompt and scope of control grows as the number of tools / decisions it oversees increases. 
-
-When we think about our application, we *always* want to triage incoming emails. So, we know that the first step is always going to be a triage step. Why not set up our application so that the first step is always the triage step? This is the motivation for the concept of a [workflow](https://langchain-ai.github.io/langgraph/how-tos/workflows/)!  
+We can see that it's easy to build an agent using LangGraph. But, what if we want to add more tools? You'll notice that the agent's prompt and scope of control grows as the number of tools / decisions it oversees increases. When we think about our application, we *always* want to triage incoming emails. So, we know that the first step is always going to be a triage step. Why not set up our application so that the first step is always the triage step? This is the motivation for the concept of a [workflow](https://langchain-ai.github.io/langgraph/how-tos/workflows/)!  
 
 ### Workflows
 - Have predefined code paths and decision logic
 - LLMs are components used for specific tasks
-- Best for structured problems with clear procedures
+- Best for structured problems with clear procedures, but not open-ended
 - Predictable behavior with explicit control flow
 
 ### Agents
 - LLMs drive the decision-making process
 - Dynamically choose which tools to use
-- Best for open-ended, unpredictable problems
-- More flexible but potentially less deterministic
+- Best for open-ended problems where we can't enumerate the steps  
+- More flexible but potentially less reliable
+
+![agent_workflow_img](img/agent_workflow.png)
 
 ### Combing the two
-We can use LangGraph to build a routing step prior to the agent, which handles the triage decision. This has some benefits, including separation of concerns. The triage router only focuses on the triage decision, while the agent focuses *only* on the response. As we'll see, this separation of concerns is useful because we'll add more tools to our agent. Breaking out the triage decision frees up some "cognitive resources" for the agent to focus only on the response. 
+We can use LangGraph to build a routing step prior to the agent, which handles the triage decision. This has some benefits, including separation of concerns. The triage router only focuses on the triage decision, while the agent focuses *only* on the response. As we'll see, this *separation of concerns* is useful because we'll add more tools to our agent. Breaking out the triage decision frees up some "cognitive resources" for the agent to focus only on the response. 
 
 ### The Triage Router
 
-Our email assistant implementation uses a triage router pattern. You'll notice that we use [Command](https://langchain-ai.github.io/langgraph/how-tos/command/) to combine control flow and state updates, which is a useful pattern for building more complex agents.
+Our email assistant implementation uses a router pattern. The router analyzes the email and makes a critical decision: should we respond, notify, or ignore? Based on this decision, it directs the flow either to the response agent or directly to the end state. We use [Command](https://langchain-ai.github.io/langgraph/how-tos/command/) objects in LangGraph to both update the state and select the next node to visit.
 
 ![router-img](img/router.png)
 
@@ -456,8 +452,6 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
         raise ValueError(f"Invalid classification: {result.classification}")
     return Command(goto=goto, update=update)
 ```
-
-The router analyzes the email and makes a critical decision: should we respond, notify, or ignore? Based on this decision, it directs the flow either to the response agent or directly to the end state.
 
 ### Building the Workflow with a Router
 

@@ -1,11 +1,6 @@
 # Evaluating Agents
 
-We have two implementations of our email assistant:
-
-* `src/email_assistant/baseline_agent.py` 
-* `src/email_assistant/email_assistant.py`
-
-How can we compare them? [LangSmith](https://docs.smith.langchain.com/) offers two primary ways to test agents. 
+We have two implementations of our email assistant. One is an agent, and one is an agentic workflow that uses a router to triage the email and then passes the email to the agent for response generation. How can we compare them? As an example, we may want to know how they compare in terms of token usage, response quality, latency, or triage accuracy. This is why testing is important: it guides your decisions about architecture. [LangSmith](https://docs.smith.langchain.com/) offers two primary ways to test agents. 
 
 ![overview-img](img/overview_eval.png)
 
@@ -13,26 +8,24 @@ How can we compare them? [LangSmith](https://docs.smith.langchain.com/) offers t
 
 ### Pytest
 
-[Pytest](https://docs.pytest.org/en/stable/) is well known to many developers. It is a powerful tool for writing tests and is well integrated with the Python ecosystem. LangSmith integrates with pytest to allow you to write tests that we can run on each assistant.
+[Pytest](https://docs.pytest.org/en/stable/) is well known to many developers as a powerful tool for writing tests within the Python ecosystem. LangSmith integrates with pytest to allow you to write tests that we can run on each assistant and log the results to LangSmith.
 
 ### LangSmith Datasets 
 
-You can also create a dataset [in LangSmith](https://docs.smith.langchain.com/evaluation) and run each assistant against the dataset using the LangSmith evaluate API. TODO: Add just pro/con comparing the two approaches. 
+You can also create a dataset [in LangSmith](https://docs.smith.langchain.com/evaluation) and run each assistant against the dataset using the LangSmith evaluate API. TODO: Add pro/con comparing Pytest to LangSmith datasets.  
 
 ## Test Cases
 
-Testing starts with defining the test cases. We'll use the following:
+Testing often starts with defining the test cases, which can be a challenging process. In this case, we'll just define a set of example emails we want to handle along with a few things to test. You can see the test cases in `eval/email_dataset.py`, which contains the following:
 
 1. **Input Emails**: A collection of diverse email examples
 2. **Ground Truth Classifications**: `Respond`, `Notify`, `Ignore`
 3. **Expected Tool Calls**: Tools called for each email that requires a response
 4. **Response Criteria**: What makes a good response for emails requiring replies
 
-You can see the test cases in `eval/email_dataset.py`.
-
 ## Pytest Example
 
-Here's a simple example using Pytest. 
+Here's a simple example of testing using Pytest. 
 
 ```python
 %cd ..
@@ -40,7 +33,7 @@ Here's a simple example using Pytest.
 %autoreload 2
 ```
 
-We will test whether the `baseline_agent` makes the appropriate tool calls.
+We will test whether the `baseline_agent` makes the appropriate tool calls when responding to the emails.
 
 ```python
 import pytest
@@ -85,19 +78,13 @@ def test_email_dataset_tool_calls(email_input, expected_calls):
     assert len(missing_calls) == 0
 ```
 
-You'll notice a few things:
-
-First, to [run with Pytest and log test results to LangSmith](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest), we only need to add the `@pytest.mark.langsmith ` decorator to our function and place it in a file, as you see in `notebooks/test_tools.py`. 
-
-Second, we can pass dataset examples to the test function as shown [here](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest#parametrize-with-pytestmarkparametrize) via `@pytest.mark.parametrize`. 
-
-We can run the test from the command line as shown below. We can view the results in the LangSmith UI. The `assert len(missing_calls) == 0` is logged to the `Pass` column in LangSmith. The `log_outputs` are passed to the `Outputs` column and function arguments are passed to the `Inputs` column. From  the project root, run:
+You'll notice a few things. First, to [run with Pytest and log test results to LangSmith](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest), we only need to add the `@pytest.mark.langsmith ` decorator to our function and place it in a file, as you see in `notebooks/test_tools.py`. Second, we can pass dataset examples to the test function as shown [here](https://docs.smith.langchain.com/evaluation/how_to_guides/pytest#parametrize-with-pytestmarkparametrize) via `@pytest.mark.parametrize`. We can run the test from the command line. From the project root, run:
 
 ```
 ! LANGSMITH_TEST_SUITE='Email assistant: Test Tools'  pytest notebooks/test_tools.py
 ```
 
-Each input passed in `@pytest.mark.parametrize(` is a separate row logged to the `LANGSMITH_TEST_SUITE` project name in LangSmith, which is found under `Datasets & Experiments`.
+We can view the results in the LangSmith UI. The `assert len(missing_calls) == 0` is logged to the `Pass` column in LangSmith. The `log_outputs` are passed to the `Outputs` column and function arguments are passed to the `Inputs` column. Each input passed in `@pytest.mark.parametrize(` is a separate row logged to the `LANGSMITH_TEST_SUITE` project name in LangSmith, which is found under `Datasets & Experiments`.
 
 ![Test Results](img/test_result.png)
 
@@ -105,7 +92,7 @@ Each input passed in `@pytest.mark.parametrize(` is a separate row logged to the
 
 ### Dataset Definition 
 
-In addition to the Pytest approach, we can also [create a dataset in LangSmith](https://docs.smith.langchain.com/evaluation/how_to_guides/manage_datasets_programmatically#create-a-dataset) with the SDK. This creates a dataset with the test cases in the `eval/email_dataset.py` file.
+In addition to the Pytest approach, we can also [create a dataset in LangSmith](https://docs.smith.langchain.com/evaluation/how_to_guides/manage_datasets_programmatically#create-a-dataset) with the LangSmith SDK. This creates a dataset with the test cases in the `eval/email_dataset.py` file.
 
 ```python
 from langsmith import Client
@@ -187,7 +174,9 @@ def classification_evaluator(outputs: dict, reference_outputs: dict) -> bool:
 
 ### Running Evaluation
 
-Now, the question is: how are these things hooked together? The evaluate API takes care of it for us. It passes the `inputs` dict from our dataset the target function. It passes the `outputs` dict from our dataset to the evaluator function. And it passes the output of our agent to the evaluator function.
+Now, the question is: how are these things hooked together? The evaluate API takes care of it for us. It passes the `inputs` dict from our dataset the target function. It passes the `outputs` dict from our dataset to the evaluator function. And it passes the output of our agent to the evaluator function. Note this is similar to what we did with Pytest: in Pytest, we passed in the dataset example inputs and reference outputs to the test function with `@pytest.mark.parametrize`.
+
+![overview-img](img/eval_detail.png)
 
 ```python
 experiment_results_baseline = client.evaluate(

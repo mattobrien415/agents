@@ -1,8 +1,8 @@
-# Interrupt Workshop 
+# Agents From Scratch 
 
-AI agents promise to transform how we work, but there's often a gap between hype and reality: to act on our behalf, agents need to learn and remember our preferences. In this workshop, we're going to show how to build self-improving and personalized agents from scratch using LangChain, LangGraph, and LangSmith. 
+AI agents promise to transform how we work, but there's often a gap between hype and reality: to act on our behalf, agents need to learn and remember our preferences. The repo is a guide to building agents from scratch, building from simple principles to self-improving and personalized agents that use LangChain, LangGraph, and LangSmith. 
 
-We're going to build an agent that can act an an e-mail assistant, because this is often a tedious task that could benefit from an AI assistant, but it requires a high level of personalization (e.g., what to respond to, what to ignore, what to schedule a meeting for, and how to respond). The ideas and approaches shown here can be applied to other agents across a wide range of tasks. Here is a map of the components covered in the workshop:
+We're going to build an agent that can act an an e-mail assistant, because this is often a tedious task that could benefit from an AI assistant, but it requires a high level of personalization (e.g., what to respond to, what to ignore, what to schedule a meeting for, and how to respond). The ideas and approaches shown here can be applied to other agents across a wide range of tasks. Here is a map of the components covered:
 
 ![interrupt_conf_high_level](notebooks/img/overview.png)
 
@@ -28,7 +28,7 @@ $ pip install -e .
 
 ## Structure 
 
-The workshop is organized into the 4 sections, with a notebook for each and accompanying code in the `src/email_assistant` directory.
+The repo is organized into the 4 sections, with a notebook for each and accompanying code in the `src/email_assistant` directory.
 
 ### Building an agent 
 * Notebook: `notebooks/agent.ipynb`

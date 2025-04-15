@@ -1,16 +1,16 @@
 # Human-in-the-Loop
 
-Our email assistant can be triage emails and use tools to respond to them. But do we actually trust it to manage our inbox? Few would trust an AI to manage their inbox without some human oversight at the start, which is why human-in-the-loop (HITL) is a critical pattern for agent systems.
+We've tested two different email assistant, both of which can triage emails and use tools to respond to them. But do we actually *trust* them to manage our inbox? Few would trust an AI to manage their inbox without some human oversight immediately, which is why human-in-the-loop (HITL) is a critical pattern for many agent systems.
 
 ![overview-img](img/overview_hitl.png)
 
-## Human-in-the-Loop with LangGraph Interrupts
+## LangGraph Interrupts
 
-The HITL (Human-In-The-Loop) pattern is useful for applications where decisions require human validation. LangGraph provides built-in support for this through its [interrupt mechanism](https://langchain-ai.github.io/langgraph/concepts/interrupts/), allowing us to pause execution and request human input when needed. Let's add HITL to our email assistant after specific tools are called!
+The HITL (Human-In-The-Loop) pattern is useful for applications where decisions require human validation. LangGraph provides built-in support for this through its [interrupt mechanism](https://langchain-ai.github.io/langgraph/concepts/interrupts/), allowing us to pause execution of an agent and request human input when needed. Let's add HITL to our email assistant after specific tools are called.
 
 ### Simple Interrupt Example
 
-Let's assume we want a simple agent that can ask the user a question with a tool call and then use that information. The agent needs to stop and wait for the user to provide the information. This is where the `interrupt` function comes in. The `interrupt` function is the core of LangGraph's human-in-the-loop capability:
+First, let's just show a simple example for how to use the `interrupt` function. Assume we want a simple agent that can ask the user a question and then use that information. The `interrupt` function can be used for this purpose:
 
 ```
 location = interrupt(ask.question)
@@ -18,11 +18,11 @@ location = interrupt(ask.question)
 
 When this line executes:
 1. It raises a `GraphInterrupt` exception, which pauses the graph execution
-2. It surfaces the value (the question) to the client
-3. Execution stops at this point until resumed with a `Command`
+2. It surfaces the value passed in (`ask.question`) to the client TODO: explain the client
+3. Execution stops at this point until resumed 
 4. When resumed, the function returns the value provided by the human
 
-Here's a minimal example of how to implement a basic interrupt with an agent:
+Here's a minimal example of how to implement this using `interrupt`:
 
 ```python
 from pydantic import BaseModel
@@ -70,9 +70,13 @@ def call_model(state):
     return {"messages": [message]}
 
 def ask_human(state):
+    # Get the tool call ID 
     tool_call_id = state["messages"][-1].tool_calls[0]["id"]
+    # Get the AskHuman schema
     ask = AskHuman.model_validate(state["messages"][-1].tool_calls[0]["args"])
+    # Interrupt the graph with the question from the AskHuman schema
     location = interrupt(ask.question)
+    # Create a tool message once the user has responded with the location
     tool_message = [{"tool_call_id": tool_call_id, "type": "tool", "content": location}]
     return {"messages": tool_message}
 
@@ -87,7 +91,6 @@ workflow.add_edge(START, "agent")
 # We now add a conditional edge
 workflow.add_conditional_edges(
     # First, we define the start node. We use `agent`.
-    # This means these are the edges taken after the `agent` node is called.
     "agent",
     # Next, we pass in the function that will determine which node is called next.
     should_continue,
@@ -99,7 +102,9 @@ workflow.add_edge("ask_human", "agent")
 # Set up memory
 from langgraph.checkpoint.memory import MemorySaver
 memory = MemorySaver()
+# Compile the workflow
 app = workflow.compile(checkpointer=memory)
+# Draw the graph
 display(Image(app.get_graph().draw_mermaid_png()))
 ```
 
@@ -112,16 +117,15 @@ for event in app.stream({"messages": messages}, config, stream_mode="values"):
     event["messages"][-1].pretty_print()
 ```
 
-You can see that our graph got interrupted inside the ask_human node. 
+You can see that our graph got interrupted inside the `ask_human` node. It is now waiting for a location to be provided. You also notice that we use the [checkpointer](https://langchain-ai.github.io/langgraph/concepts/memory/#short-term-memory) to persist the state of the graph after the interrupt. This allows us to resume execution from the same state after the human has responded.
 
-It is now waiting for a location to be provided. 
 ```python
 app.get_state(config).next
 ```
 
 ### Using Command to Resume Execution
 
-After an interrupt, we need a way to continue execution. This is where the `Command` interface comes in. The `Command` object has several powerful capabilities:
+After an interrupt, we need a way to continue execution. This is where the `Command` interface comes in. [The `Command` object has several powerful capabilities](https://langchain-ai.github.io/langgraph/how-tos/command/):
 - `resume`: Provides the value to return from the interrupt call
 - `goto`: Specifies which node to route to next
 - `update`: Modifies the state before continuing execution
@@ -139,11 +143,7 @@ for event in app.stream(Command(resume="san francisco"), config, stream_mode="va
 
 ## Agent Inbox
 
-While we can implement basic human-in-the-loop functionality using raw `interrupt` calls and Command responses, our email assistant benefits from a more structured interface for human interaction. This is especially important for an email assistant where we need *multiple types of human review*.
-
-### HITL Interactions for Email Assistant
-
-Our email assistant requires several types of human-in-the-loop interactions:
+While we can implement basic human-in-the-loop functionality using `interrupt` calls and `Command` responses with the SDK, as shown above, this doesn't really scale well if we want to process a large number of emails and a variety of different actions. Our email assistant requires several types of human-in-the-loop interactions:
 
 1. **Email Triage Review**:
    - When an email is classified as "NOTIFY," humans should verify this classification
@@ -157,15 +157,11 @@ Our email assistant requires several types of human-in-the-loop interactions:
    - When the assistant proposes scheduling a meeting, humans should verify the details
    - Users should be able to modify attendees, duration, date/time before accepting
 
-4. **General Tool Execution Approval**:
-   - Any significant action (sending emails, scheduling meetings) requires human approval
-   - Some low-risk tools (like calendar availability checks) can run without interruption
+In general, any significant action (sending emails, scheduling meetings) requires human approval. Some low-risk tools (like calendar availability checks) can run without interruption. Of course, this is entirely dependent on the application and the risk of the action.
 
 ### Agent Inbox: A Purpose-Built HITL Interface
 
-To handle these complex interaction patterns, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox), a specialized interface for human-in-the-loop AI agents that integrates with LangGraph.
-
-Agent Inbox provides:
+With this in mind, we built a simple interface for human-in-the-loop called [Agent Inbox](https://github.com/langchain-ai/agent-inbox) that allows us to review and approve or reject actions taken by LangGraph agents. Agent Inbox provides:
 
 1. **Structured Interaction Types**:
    - `accept`: Approve the agent's action and continue
@@ -231,19 +227,12 @@ This structured approach allows our email assistant to collect precise human inp
 
 ## Email Assistant with Human-in-the-Loop
 
-Now that we understand both the interrupt mechanism and Agent Inbox, let's look at our complete email assistant implementation with human-in-the-loop capabilities. This implementation brings together all the concepts we've discussed:
+Now that we understand both the interrupt mechanism and Agent Inbox, let's look at our email assistant implementation with human-in-the-loop. This implementation brings together all the concepts we've discussed:
 
 1. It uses the `interrupt` function to pause execution at key decision points
 2. It structures interrupt requests specifically for Agent Inbox
 3. It processes different response types from human reviewers
 4. It integrates these HITL capabilities into a full email processing workflow
-
-The full implementation consists of:
-- Tools for email management, meeting scheduling, and human interaction
-- A triage router that categorizes incoming emails
-- An interrupt handler for triage decisions (NOTIFY classification)
-- A separate interrupt handler for tool execution (write_email, schedule_meeting, etc.)
-- A complete workflow that connects these components
 
 ```python
 %cd ..
@@ -315,7 +304,7 @@ llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
 llm_with_tools = llm.bind_tools(tools)
 ```
 
-### Core Nodes of the Email Assistant
+### Nodes of the Email Assistant
 
 Our email assistant has several key nodes that handle different aspects of the workflow:
 
@@ -341,7 +330,6 @@ Our email assistant has several key nodes that handle different aspects of the w
 Each of these nodes plays a specific role in the overall email processing workflow.
 
 ```python
-
 # Nodes 
 def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "response_agent", "__end__"]]:
     """Analyze email content to decide if we should respond, notify, or ignore.
@@ -485,7 +473,7 @@ def llm_call(state: State):
     }
 ```
 
-### The interrupt_handler: Human Review for Tool Execution
+### The interrupt_handler
 
 The `interrupt_handler` is the core HITL component of our response agent. Its job is to examine the tool calls that the LLM wants to make and determine which ones need human review before execution. Here's how it works:
 
