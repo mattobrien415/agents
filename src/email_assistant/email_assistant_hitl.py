@@ -20,11 +20,11 @@ def write_email(to: str, subject: str, content: str) -> str:
 
 @tool
 def schedule_meeting(
-    attendees: list[str], subject: str, duration_minutes: int, preferred_day: str
+    attendees: list[str], subject: str, duration_minutes: int, preferred_day: str, start_time: int
 ) -> str:
     """Schedule a calendar meeting."""
     # Placeholder response - in real app would check calendar and schedule
-    return f"Meeting '{subject}' scheduled for {preferred_day} with {len(attendees)} attendees"
+    return f"Meeting '{subject}' scheduled on {preferred_day} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
 
 @tool
 def check_calendar_availability(day: str) -> str:
@@ -333,13 +333,32 @@ def interrupt_handler(state: State):
                 raise ValueError(f"Invalid tool call: {tool_call['name']}")
 
         elif response["type"] == "ignore":
-            # Don't execute the tool
-            result.append({"role": "tool", "content": "Tool execution cancelled by user", "tool_call_id": tool_call["id"]})
+            if tool_call["name"] == "write_email":
+                # Don't execute the tool, and tell the agent how to proceed
+                result.append({"role": "tool", "content": "User ignored this email draft. Call the 'Done' tool to end the email assistant workflow.", "tool_call_id": tool_call["id"]})
+            elif tool_call["name"] == "schedule_meeting":
+                # Don't execute the tool, and tell the agent how to proceed
+                result.append({"role": "tool", "content": "User ignored this calendar meeting draft. Call the 'write_email' tool to respond, but don't include the meeting details in the email.", "tool_call_id": tool_call["id"]})
+            elif tool_call["name"] == "Question":
+                # Don't execute the tool, and tell the agent how to proceed
+                result.append({"role": "tool", "content": "User ignored this question. Proceed with the context that you have and don't ask the user any more questions.", "tool_call_id": tool_call["id"]})
+            else:
+                raise ValueError(f"Invalid tool call: {tool_call['name']}")
             
         elif response["type"] == "response":
             # User provided feedback
             user_feedback = response["args"]
-            result.append({"role": "tool", "content": f"Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
+            if tool_call["name"] == "write_email":
+                # Don't execute the tool, and add a message with the user feedback to incorporate into the email
+                result.append({"role": "tool", "content": f"User gave feedback, which can we incorporate into the email. Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
+            elif tool_call["name"] == "schedule_meeting":
+                # Don't execute the tool, and add a message with the user feedback to incorporate into the email
+                result.append({"role": "tool", "content": f"User gave feedback, which can we incorporate into the meeting request. Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
+            elif tool_call["name"] == "Question":
+                # Don't execute the tool, and add a message with the user feedback to incorporate into the email
+                result.append({"role": "tool", "content": f"User answered the question, which can we can use for any follow up actions. Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
+            else:
+                raise ValueError(f"Invalid tool call: {tool_call['name']}")
 
         # Catch all other responses
         else:
