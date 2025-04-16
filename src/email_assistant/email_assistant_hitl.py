@@ -56,6 +56,7 @@ tools_by_name = {tool.name: tool for tool in tools}
 # Initialize the LLM for use with router / structured output
 llm = init_chat_model("openai:gpt-4o", temperature=0.0)
 llm_router = llm.with_structured_output(RouterSchema) 
+
 # Initialize the LLM, enforcing tool use (of any available tools) for agent
 llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
 llm_with_tools = llm.bind_tools(tools)
@@ -69,12 +70,6 @@ def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "
     - Company-wide announcements
     - Messages meant for other teams
     """
-        
-    # Format system prompt with background and triage instructions
-    system_prompt = triage_system_prompt.format(
-        background=default_background,
-        triage_instructions=default_triage_instructions
-    )
 
     # Parse the email input
     author, to, subject, email_thread = parse_email(state["email_input"])
@@ -84,6 +79,12 @@ def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "
 
     # Create email markdown for Agent Inbox in case of notification  
     email_markdown = format_email_markdown(subject, author, to, email_thread)
+
+    # Format system prompt with background and triage instructions
+    system_prompt = triage_system_prompt.format(
+        background=default_background,
+        triage_instructions=default_triage_instructions
+    )
 
     # Run the router LLM
     result = llm_router.invoke(
@@ -141,9 +142,9 @@ def triage_interrupt_handler(state: State) -> Command[Literal["response_agent", 
     # Create email markdown for Agent Inbox in case of notification  
     email_markdown = format_email_markdown(subject, author, to, email_thread)
 
-    # Create messages to save to memory
+    # Create messages
     messages = [{"role": "user",
-                "content": f"Classification Decision: {state['classification_decision']} for email: {email_markdown}"
+                "content": f"Email to notify user about: {email_markdown}"
                 }]
 
     # Create interrupt for Agent Inbox
@@ -154,7 +155,7 @@ def triage_interrupt_handler(state: State) -> Command[Literal["response_agent", 
         },
         "config": {
             "allow_ignore": True,  
-            "allow_respond": True, # Allow user feedback if decision is not correct 
+            "allow_respond": True, 
             "allow_edit": False, 
             "allow_accept": False,  
         },
@@ -165,19 +166,24 @@ def triage_interrupt_handler(state: State) -> Command[Literal["response_agent", 
     # Agent Inbox responds with a list  
     response = interrupt([request])[0]
 
-    # Accept the decision and end   
-    if response["type"] == "accept":
-        goto = END 
-
-    # If user provides feedback, update memory  
-    elif response["type"] == "response":
+    # If user provides feedback, go to response agent and use feedback to respond to email   
+    if response["type"] == "response":
         # Add feedback to messages 
         user_input = response["args"]
+        # Used by the response agent
         messages.append({"role": "user",
-                        "content": f"Here is feedback on how the user would prefer the email to be classified: {user_input}"
+                        "content": f"User wants to reply to the email. Use this feedback to respond: {user_input}"
                         })
+        # Go to response agent
+        goto = "response_agent"
 
+    # If user ignores email, go to END
+    elif response["type"] == "ignore":
         goto = END
+
+    # Catch all other responses
+    else:
+        raise ValueError(f"Invalid response: {response}")
 
     # Update the state 
     update = {
@@ -211,11 +217,12 @@ def interrupt_handler(state: State):
     # Iterate over the tool calls in the last message
     for tool_call in state["messages"][-1].tool_calls:
         
-        # TODO (discuss w/ Vadym): FIND BETTER WAY TO HANDLE THIS
+        # Allowed tools for HITL
         hitl_tools = ["write_email", "schedule_meeting", "Question"]
         
         # If tool is not in our HITL list, execute it directly without interruption
         if tool_call["name"] not in hitl_tools:
+
             # Execute search_memory and other tools without interruption
             tool = tools_by_name[tool_call["name"]]
             observation = tool.invoke(tool_call["args"])
@@ -223,11 +230,9 @@ def interrupt_handler(state: State):
             continue
             
         # Get original email from email_input in state
-        original_email_markdown = ""
-        if "email_input" in state:
-            email_input = state["email_input"]
-            author, to, subject, email_thread = parse_email(email_input)
-            original_email_markdown = format_email_markdown(subject, author, to, email_thread)
+        email_input = state["email_input"]
+        author, to, subject, email_thread = parse_email(email_input)
+        original_email_markdown = format_email_markdown(subject, author, to, email_thread)
         
         # Format tool call for display and prepend the original email
         tool_display = format_for_display(state, tool_call)
@@ -255,6 +260,8 @@ def interrupt_handler(state: State):
                 "allow_edit": False,
                 "allow_accept": False,
             }
+        else:
+            raise ValueError(f"Invalid tool call: {tool_call['name']}")
 
         # Create the interrupt request
         request = {
@@ -285,7 +292,7 @@ def interrupt_handler(state: State):
             # Get edited args from Agent Inbox
             edited_args = response["args"]["args"]
 
-            # Save feedback in memory and update the write_email tool call with the edited content from Agent Inbox
+            # Update the write_email tool call with the edited content from Agent Inbox
             if tool_call["name"] == "write_email":
                 
                 # Update the AI message's tool call with edited content (reference to the message in the state)
@@ -303,7 +310,7 @@ def interrupt_handler(state: State):
                 # Add only the tool response message
                 result.append({"role": "tool", "content": observation, "tool_call_id": current_id})
             
-            # Save feedback in memory and update the schedule_meeting tool call with the edited content from Agent Inbox
+            # Update the schedule_meeting tool call with the edited content from Agent Inbox
             elif tool_call["name"] == "schedule_meeting":
                 
                 # Update the AI message's tool call with edited content
@@ -320,6 +327,10 @@ def interrupt_handler(state: State):
                 
                 # Add only the tool response message
                 result.append({"role": "tool", "content": observation, "tool_call_id": current_id})
+            
+            # Catch all other tool calls
+            else:
+                raise ValueError(f"Invalid tool call: {tool_call['name']}")
 
         elif response["type"] == "ignore":
             # Don't execute the tool
@@ -329,6 +340,10 @@ def interrupt_handler(state: State):
             # User provided feedback
             user_feedback = response["args"]
             result.append({"role": "tool", "content": f"Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
+
+        # Catch all other responses
+        else:
+            raise ValueError(f"Invalid response: {response}")
             
     return {"messages": result}
 

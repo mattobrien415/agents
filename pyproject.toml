@@ -13,7 +13,11 @@ dependencies = [
     "pandas",
     "matplotlib",
     "pytest",
-    "pytest-xdist"
+    "pytest-xdist",
+    "jupyter",
+    "google-api-python-client>=2.128.0",
+    "google-auth-oauthlib",
+    "google-auth-httplib2",
 ]
 
 [project.optional-dependencies]
