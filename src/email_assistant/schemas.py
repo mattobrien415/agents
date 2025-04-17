@@ -24,16 +24,11 @@ class State(MessagesState):
     email_input: dict
     classification_decision: Literal["ignore", "respond", "notify"]
 
-# User profile information
-profile = {
-    "name": "Lance",
-    "full_name": "Lance Johnson",
-    "user_profile_background": """
-Lance is a senior software engineer at LangChain specializing in AI/ML systems.
-He manages a team of 5 engineers working on the LangGraph project.
-His time is valuable and he prefers concise communications.
-    """,
-    "email": "lance@langchain.com",
-    "position": "Senior Software Engineer",
-    "team": "LangGraph Team"
-}
+class EmailData(TypedDict):
+    id: str
+    thread_id: str
+    from_email: str
+    subject: str
+    page_content: str
+    send_time: str
+    to_email: str

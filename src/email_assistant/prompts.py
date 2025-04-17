@@ -194,6 +194,10 @@ When handling emails, follow these steps:
 < Calendar Preferences >
 {cal_preferences}
 </ Calendar Preferences >
+
+< Background >
+{background}
+</ Background >
 """
 
 # Default background information 

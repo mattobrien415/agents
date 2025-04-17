@@ -17,15 +17,15 @@ from langgraph.types import Command
 def write_email(to: str, subject: str, content: str) -> str:
     """Write and send an email."""
     # Placeholder response - in real app would send email
-    return f"Email sent to {to} with subject '{subject}'"
+    return f"Email sent to {to} with subject '{subject}' with content: {content}"
 
 @tool
 def schedule_meeting(
-    attendees: list[str], subject: str, duration_minutes: int, preferred_day: str
+    attendees: list[str], subject: str, duration_minutes: int, preferred_day: str, start_time: int
 ) -> str:
     """Schedule a calendar meeting."""
     # Placeholder response - in real app would check calendar and schedule
-    return f"Meeting '{subject}' scheduled for {preferred_day} with {len(attendees)} attendees"
+    return f"Meeting '{subject}' scheduled on {preferred_day} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
 
 @tool
 def check_calendar_availability(day: str) -> str:

@@ -86,6 +86,8 @@ in_memory_store = InMemoryStore()
 graph = graph.compile(checkpointer=checkpointer, store=in_memory_store)
 ```
 
+The store is then accessible in any node of the graph, as we'll see below!
+
 ## Memory in LangGraph
 
 Let's take our graph used with HITL and add memory to it.
@@ -106,11 +108,12 @@ from langchain.chat_models import init_chat_model
 from langchain_core.tools import tool
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.store.base import BaseStore
 from langgraph.types import interrupt, Command
 
-from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_background, default_triage_instructions, default_response_preferences, default_cal_preferences
+from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_triage_instructions, default_background, default_response_preferences, default_cal_preferences
 from email_assistant.schemas import State, RouterSchema, StateInput
-from email_assistant.utils import parse_email, format_for_display, format_email_markdown
+from email_assistant.utils import parse_email, format_for_display, format_email_markdown, format_messages_string
 
 # Agent tools 
 @tool
@@ -121,11 +124,11 @@ def write_email(to: str, subject: str, content: str) -> str:
 
 @tool
 def schedule_meeting(
-    attendees: list[str], subject: str, duration_minutes: int, preferred_day: str
+    attendees: list[str], subject: str, duration_minutes: int, preferred_day: str, start_time: int
 ) -> str:
     """Schedule a calendar meeting."""
     # Placeholder response - in real app would check calendar and schedule
-    return f"Meeting '{subject}' scheduled for {preferred_day} with {len(attendees)} attendees"
+    return f"Meeting '{subject}' scheduled on {preferred_day} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
 
 @tool
 def check_calendar_availability(day: str) -> str:
@@ -137,19 +140,19 @@ def check_calendar_availability(day: str) -> str:
 class Question(BaseModel):
       """Question to ask user."""
       content: str
-    
+
 @tool
 class Done(BaseModel):
       """E-mail has been sent."""
       done: bool
-
+    
 # All tools available to the agent
 tools = [
     write_email, 
     schedule_meeting, 
     check_calendar_availability, 
     Question, 
-    Done,
+    Done
 ]
 
 tools_by_name = {tool.name: tool for tool in tools}
@@ -157,158 +160,79 @@ tools_by_name = {tool.name: tool for tool in tools}
 # Initialize the LLM for use with router / structured output
 llm = init_chat_model("openai:gpt-4o", temperature=0.0)
 llm_router = llm.with_structured_output(RouterSchema) 
+
 # Initialize the LLM, enforcing tool use (of any available tools) for agent
 llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
 llm_with_tools = llm.bind_tools(tools)
 ```
 
-Now, this is the critical part! Right now we log feedback:
-```
-Here is feedback on how the user would prefer the email to be classified
-```
+Now, this is the critical part! We don't capture any feedback from the user in our graph. 
 
-### Memory Management with LangMem
+### Memory Management 
 
-But we don't do anything with it! Let's change that by simply adding the feedback to the memory. What we *want* to do is fairly straightforward: we want to add the feedback to the memory `Store`. If we compile our graph with the store, we can access the store in any node. So that is not a problem! But we have to answer two questions: 1) how do we want the memory to be structured? 2) how do we want to update the memory? 
-
-This is where [LangMem](https://langchain-ai.github.io/langmem/) comes in! LangMem is a lightweight library that can be used on top of the LangGraph Store to provide a more user-friendly API for memory management. We can create a `create_memory_store_manager` that takes care of a few nice things: 
-
-1) it will create a namespace in the `Store` for us 
-2) it will initialize the store with our default instructions (default_triage_instructions)
-3) it allows us to specify if we want a collection `enable_inserts=True` of memories
-4) it allows us to specify if we just want to update one memory "profile" `enable_inserts=False`
-5) it handles updating the memory based upon input messages
+Let's change that by simply adding the feedback to the memory. What we *want* to do is fairly straightforward: we want to add the feedback to the memory `Store`. If we compile our graph with the store, we can access the store in any node. So that is not a problem! But we have to answer two questions: 1) how do we want the memory to be structured? 2) how do we want to update the memory? Let's create some helper functions to make this easier: we'll just store memories as string to keep things simple.
 
 ```python
-from langmem import create_memory_store_manager
-from email_assistant.prompts import default_triage_instructions
-
-# Feedback memory managers for writing to memory Store 
-triage_feedback_memory_manager = create_memory_store_manager(
-    init_chat_model("openai:gpt-4o", temperature=0.0),
-    namespace=("email_assistant", "triage_preferences"),
-    instructions="""Extract user email triage preferences into a single set of rules.
-    Format the information as a string explaining the criteria for each category.""",
-    enable_inserts=False, # Update profile in-place,
-    enable_deletes=False, # Do not delete profile from memory
-    default=default_triage_instructions
-)
-```
-
-Now we can used this in our by directly calling the `invoke` method.
-
-```python
-from langgraph.store.base import BaseStore
-from langmem import create_memory_store_manager
-
-def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal["response_agent", "__end__"]]:
-    """Handles interrupts from the triage step"""
+def get_memory(store, namespace, default_content=None):
+    """Get memory from the store or initialize with default if it doesn't exist.
     
-    # Parse the email input
-    author, to, subject, email_thread = parse_email(state["email_input"])
+    Args:
+        store: LangGraph BaseStore instance to search for existing memory
+        namespace: Tuple defining the memory namespace, e.g. ("email_assistant", "triage_preferences")
+        default_content: Default content to use if memory doesn't exist
+        
+    Returns:
+        str: The content of the memory profile, either from existing memory or the default
+    """
+    # Search for existing memory with namespace and key
+    user_preferences = store.get(namespace, "user_preferences")
+    
+    # If memory exists, return its content (the value)
+    if user_preferences:
+        return user_preferences.value
+    
+    # If memory doesn't exist, add it to the store and return the default content
+    else:
+        # Namespace, key, value
+        store.put(namespace, "user_preferences", default_content)
+        user_preferences = default_content
+    
+    # Return the default content
+    return user_preferences 
 
-    # Create email markdown for Agent Inbox in case of notification  
-    email_markdown = format_email_markdown(subject, author, to, email_thread)
+class UserPreferences(BaseModel):
+    """User preferences."""
+    preferences: str
+    justification: str
 
-    # Create messages to save to memory
-    messages = [{"role": "user",
-                "content": f"Classification Decision: {state['classification_decision']} for email: {email_markdown}"
-                }]
+def update_memory(store, namespace, messages):
+    """Update memory profile in the store.
+    
+    Args:
+        store: LangGraph BaseStore instance to update memory
+        namespace: Tuple defining the memory namespace, e.g. ("email_assistant", "triage_preferences")
+        messages: List of messages to update the memory with
+    """
 
-    # Create interrupt for Agent Inbox
-    request = {
-        "action_request": {
-            "action": f"Email Assistant: {state['classification_decision']}",
-            "args": {}
-        },
-        "config": {
-            "allow_ignore": True,  
-            "allow_respond": True, # Allow user feedback if decision is not correct 
-            "allow_edit": False, 
-            "allow_accept": False,  
-        },
-        # Email to show in Agent Inbox
-        "description": email_markdown,
-    }
-
-    # Agent Inbox responds with a list  
-    response = interrupt([request])[0]
-
-    # Accept the decision and end   
-    if response["type"] == "accept":
-        goto = END 
-
-    # If user provides feedback, update memory  
-    elif response["type"] == "response":
-        # Add feedback to messages 
-        user_input = response["args"]
-        messages.append({"role": "user",
-                        "content": f"Here is feedback on how the user would prefer the email to be classified: {user_input}"
-                        })
-        # Update memory with feedback using the memory manager
-        triage_feedback_memory_manager.invoke({"messages": messages})
-        goto = END
-
-    # Update the state 
-    update = {
-        "messages": messages,
-    }
-
-    return Command(goto=goto, update=update)
+    # Get the existing memory
+    user_preferences = store.get(namespace, "user_preferences")
+    # Update the memory
+    llm = init_chat_model("openai:gpt-4o", temperature=0.0).with_structured_output(UserPreferences)
+    #TODO: Still see cases of memory loss. Further prompt engineering needed, and use of o-series. 
+    result = llm.invoke(
+        [
+            {"role": "system", "content": f"You are updating user preferences for an email assistant agent. Here are the existing user preferences related to {namespace}: {user_preferences.value}"},
+            {"role": "user", "content": f"Reflect carefully on the following messages. Use them to update the existing user preferences. IMPORTANT: Do NOT remove any existing preferences when updating the user preferences. Only add or make narrow modifications to the existing preferences. We want to ensure that we do not lose any information."}
+        ] + messages
+    )
+    # Save the updated memory to the store
+    store.put(namespace, "user_preferences", result.preferences)
 ```
 
-We can create a memory manager for each memory type we want to store. 
-
-Each memory manager is specialized for a specific type of information the assistant needs to remember. Let's examine how we set up different memory types for our email assistant:
-
-1. **Response Preferences Manager**: This memory manager captures and maintains user preferences for email responses, such as tone, style, and formatting preferences. It uses a "profile" approach (with `enable_inserts=False`) to maintain a single, consolidated set of preferences that get updated over time, rather than creating many discrete memories.
-
-2. **Calendar Preferences Manager**: Similar to response preferences, this manager stores scheduling preferences like preferred meeting durations, times of day, and days of the week. It's also implemented as a profile for consistent reference.
-
-3. **Background Knowledge Manager**: Unlike the preference managers, this one uses a "collection" approach (with `enable_inserts=True`) to accumulate discrete facts about people, projects, and contexts. Each new piece of relevant information becomes a separate memory entry that can be retrieved based on relevance.
-
-The key distinction is in how these memories are updated:
-- Profiles (response and calendar preferences) consolidate feedback into a single document that gets refined over time
-- Collections (background knowledge) grow by adding new discrete memories while potentially removing outdated ones
+The triage router now leverages stored memory to make more personalized classification decisions:
 
 ```python
-response_preferences_memory_manager = create_memory_store_manager(
-    llm,
-    namespace=("email_assistant", "response_preferences"),
-    instructions="""You goal is to maintain a profile that contains a user's email response preferences. 
-    If you are given a set of rules, do not remove any rules and simply include them in the resulting profile.
-    If you are given feedback on an email response, update the profile to reflect the new preferences.""",
-    enable_inserts=False, # Update profile in-place,
-    enable_deletes=False, # Do not delete profile from memory
-    default=default_response_preferences
-)
-
-cal_preferences_memory_manager = create_memory_store_manager(
-    llm,
-    namespace=("email_assistant", "cal_preferences"),
-    instructions="""Extract user email calendar preferences into a single set of rules.
-    Format the information as a string explaining the criteria for each category.""",
-    enable_inserts=False, # Update profile in-place,
-    enable_deletes=False, # Do not delete profile from memory
-    default=default_cal_preferences
-)   
-
-background_memory_manager = create_memory_store_manager(
-    llm,
-    namespace=("email_assistant", "background"),
-    instructions="""Extract user email background information about the user, their key connections, and other relevant information.
-    Format this as a collection of short memories that can be easily recalled.""",
-    enable_inserts=True, # Update background in-place,
-    enable_deletes=True, # Since this is a collection, we can delete items (if they are no longer relevant)
-    default=default_background
-)
-```
-
-### Accessing Memory in the Triage Router
-
-The triage router now leverages stored memory to make more personalized classification decisions. Let's see how memory transforms this function:
-
-```python
+# Nodes 
 def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_interrupt_handler", "response_agent", "__end__"]]:
     """Analyze email content to decide if we should respond, notify, or ignore.
 
@@ -318,24 +242,6 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
     - Messages meant for other teams
     """
     
-    # Search for existing triage_preferences memory
-    result = triage_feedback_memory_manager.search()
-    triage_instructions=result[0].value.content
-    
-    # Search for existing background memory
-    results = background_memory_manager.search()
-    # Handle collection of memory objects
-    memories = []
-    for result in results:
-        memories.append(result.value.content)
-    background_content = "\n".join(memories)
-        
-    # Format system prompt with background and triage instructions
-    system_prompt = triage_system_prompt.format(
-        background=background_content,
-        triage_instructions=triage_instructions,
-    )
-
     # Parse the email input
     author, to, subject, email_thread = parse_email(state["email_input"])
     user_prompt = triage_user_prompt.format(
@@ -344,6 +250,15 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
 
     # Create email markdown for Agent Inbox in case of notification  
     email_markdown = format_email_markdown(subject, author, to, email_thread)
+
+    # Search for existing triage_preferences memory
+    triage_instructions = get_memory(store, ("email_assistant", "triage_preferences"), default_triage_instructions)
+
+    # Format system prompt with background and triage instructions
+    system_prompt = triage_system_prompt.format(
+        background=default_background,
+        triage_instructions=triage_instructions,
+    )
 
     # Run the router LLM
     result = llm_router.invoke(
@@ -368,6 +283,7 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
                             "content": f"Respond to the email: {email_markdown}"
                         }],
         }
+        
     elif classification == "ignore":
         print("🚫 Classification: IGNORE - This email can be safely ignored")
 
@@ -390,6 +306,76 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
 
     else:
         raise ValueError(f"Invalid classification: {classification}")
+    
+    return Command(goto=goto, update=update)
+
+def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal["response_agent", "__end__"]]:
+    """Handles interrupts from the triage step"""
+    
+    # Parse the email input
+    author, to, subject, email_thread = parse_email(state["email_input"])
+
+    # Create email markdown for Agent Inbox in case of notification  
+    email_markdown = format_email_markdown(subject, author, to, email_thread)
+
+    # Create messages
+    messages = [{"role": "user",
+                "content": f"Email to notify user about: {email_markdown}"
+                }]
+
+    # Create interrupt for Agent Inbox
+    request = {
+        "action_request": {
+            "action": f"Email Assistant: {state['classification_decision']}",
+            "args": {}
+        },
+        "config": {
+            "allow_ignore": True,  
+            "allow_respond": True,
+            "allow_edit": False, 
+            "allow_accept": False,  
+        },
+        # Email to show in Agent Inbox
+        "description": email_markdown,
+    }
+
+    # Send to Agent Inbox and wait for response
+    response = interrupt([request])[0]
+
+    # If user provides feedback, go to response agent and use feedback to respond to email   
+    if response["type"] == "response":
+        # Add feedback to messages 
+        user_input = response["args"]
+        messages.append({"role": "user",
+                        "content": f"User wants to reply to the email. Use this feedback to respond: {user_input}"
+                        })
+        # Update memory with feedback
+        update_memory(store, ("email_assistant", "triage_preferences"), [{
+            "role": "user",
+            "content": f"The user decided to respond to the email, so update the triage preferences to capture this."
+        }] + messages)
+
+        goto = "response_agent"
+
+    # If user ignores email, go to END
+    elif response["type"] == "ignore":
+        # Make note of the user's decision to ignore the email
+        messages.append({"role": "user",
+                        "content": f"The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this."
+                        })
+        # Update memory with feedback using the memory manager
+        update_memory(store, ("email_assistant", "triage_preferences"), messages)
+        goto = END
+
+    # Catch all other responses
+    else:
+        raise ValueError(f"Invalid response: {response}")
+
+    # Update the state 
+    update = {
+        "messages": messages,
+    }
+
     return Command(goto=goto, update=update)
 ```
 
@@ -402,18 +388,20 @@ def llm_call(state: State, store: BaseStore):
     """LLM decides whether to call a tool or not"""
 
     # Search for existing cal_preferences memory
-    result = cal_preferences_memory_manager.search()
-    cal_preferences=result[0].value.content
+    cal_preferences = get_memory(store, ("email_assistant", "cal_preferences"), default_cal_preferences)
     
     # Search for existing response_preferences memory
-    result = response_preferences_memory_manager.search()
-    response_preferences=result[0].value.content
+    response_preferences = get_memory(store, ("email_assistant", "response_preferences"), default_response_preferences)
+
+    # Search for existing background memory
+    background = get_memory(store, ("email_assistant", "background"), default_background)
 
     return {
         "messages": [
             llm_with_tools.invoke(
                 [
-                    {"role": "system", "content": agent_system_prompt_hitl_memory.format(response_preferences=response_preferences, 
+                    {"role": "system", "content": agent_system_prompt_hitl_memory.format(background=background,
+                                                                                         response_preferences=response_preferences, 
                                                                                          cal_preferences=cal_preferences)}
                 ]
                 + state["messages"]
@@ -447,6 +435,7 @@ def interrupt_handler(state: State, store: BaseStore):
         
         # If tool is not in our HITL list, execute it directly without interruption
         if tool_call["name"] not in hitl_tools:
+
             # Execute search_memory and other tools without interruption
             tool = tools_by_name[tool_call["name"]]
             observation = tool.invoke(tool_call["args"])
@@ -454,11 +443,9 @@ def interrupt_handler(state: State, store: BaseStore):
             continue
             
         # Get original email from email_input in state
-        original_email_markdown = ""
-        if "email_input" in state:
-            email_input = state["email_input"]
-            author, to, subject, email_thread = parse_email(email_input)
-            original_email_markdown = format_email_markdown(subject, author, to, email_thread)
+        email_input = state["email_input"]
+        author, to, subject, email_thread = parse_email(email_input)
+        original_email_markdown = format_email_markdown(subject, author, to, email_thread)
         
         # Format tool call for display and prepend the original email
         tool_display = format_for_display(state, tool_call)
@@ -486,6 +473,8 @@ def interrupt_handler(state: State, store: BaseStore):
                 "allow_edit": False,
                 "allow_accept": False,
             }
+        else:
+            raise ValueError(f"Invalid tool call: {tool_call['name']}")
 
         # Create the interrupt request
         request = {
@@ -507,10 +496,7 @@ def interrupt_handler(state: State, store: BaseStore):
             tool = tools_by_name[tool_call["name"]]
             observation = tool.invoke(tool_call["args"])
             result.append({"role": "tool", "content": observation, "tool_call_id": tool_call["id"]})
-            
-            # Remember facts from the conversation with background memory manager
-            background_memory_manager.invoke({"messages": state["messages"] + result})
-            
+                        
         elif response["type"] == "edit":
 
             # Tool selection 
@@ -522,11 +508,9 @@ def interrupt_handler(state: State, store: BaseStore):
             # Save feedback in memory and update the write_email tool call with the edited content from Agent Inbox
             if tool_call["name"] == "write_email":
 
-                # We update the memory in the namespace with the messages from the state
-                response_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"Here is a better way to respond to emails: {edited_args}"}]
-                })
-                
+                # Capture the initial tool call
+                initial_tool_call = tool_call["name"] + ": " + str(tool_call["args"])
+
                 # Update the AI message's tool call with edited content (reference to the message in the state)
                 ai_message = state["messages"][-1]
                 current_id = tool_call["id"]
@@ -541,14 +525,19 @@ def interrupt_handler(state: State, store: BaseStore):
                 
                 # Add only the tool response message
                 result.append({"role": "tool", "content": observation, "tool_call_id": current_id})
+
+                # We update the memory
+                update_memory(store, ("email_assistant", "response_preferences"), [{
+                    "role": "user",
+                    "content": f"User edited the email response. Here is the initial email generated by the assistant: {initial_tool_call}. Here is the edited email: {edited_args}. Carefully examine the differences between the two. This indicates what the user modified in the email response. Update the response preferences based upon these changes so future emails generated by the assistant more closely match the user's preferences."
+                }])
             
             # Save feedback in memory and update the schedule_meeting tool call with the edited content from Agent Inbox
             elif tool_call["name"] == "schedule_meeting":
-                # Add context about calendar preferences
-                cal_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"Here are preferred calendar settings: {edited_args}"}]
-                })
-                
+
+                # Capture the initial tool call
+                initial_tool_call = tool_call["name"] + ": " + str(tool_call["args"])
+
                 # Update the AI message's tool call with edited content
                 ai_message = state["messages"][-1]
                 current_id = tool_call["id"]
@@ -564,34 +553,77 @@ def interrupt_handler(state: State, store: BaseStore):
                 # Add only the tool response message
                 result.append({"role": "tool", "content": observation, "tool_call_id": current_id})
 
+                # Update the memory
+                update_memory(store, ("email_assistant", "cal_preferences"), [{
+                    "role": "user",
+                    "content": f"User edited the calendar invitation. Here is the initial calendar invitation generated by the assistant: {initial_tool_call}. Here is the edited calendar invitation: {edited_args}. Carefully examine the differences between the two. This indicates what the user modified in the calendar invitation. Update the cal preferences based upon these changes so future calendar invitations generated by the assistant more closely match the user's preferences."
+                }])
+            
+            # Catch all other tool calls
+            else:
+                raise ValueError(f"Invalid tool call: {tool_call['name']}")
+
         elif response["type"] == "ignore":
-            # Update relevant domain-specific memory
+
             if tool_call["name"] == "write_email":
-                # Add context about email response preferences
-                response_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"User decided to ignore this email! Make note of this as an few shot example."}]
-                })
+                # Don't execute the tool, and tell the agent how to proceed
+                result.append({"role": "tool", "content": "User ignored this email draft. Call the 'Done' tool to end the email assistant workflow.", "tool_call_id": tool_call["id"]})
+                # Update the memory by reflecting on the email tool call
+                update_memory(store, ("email_assistant", "triage_preferences"), [{
+                    "role": "user",
+                    "content": f"The user ignored the email draft. That means they did not want to respond to the email. Update the triage preferences to ensure emails of this type are not classified as respond."
+                }] + state["messages"] + result)
+
             elif tool_call["name"] == "schedule_meeting":
-                # Add context about calendar preferences
-                cal_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"User decided to ignore this email! Make note of this as an few shot example."}]
-                })
+                # Don't execute the tool, and tell the agent how to proceed
+                result.append({"role": "tool", "content": "User ignored this calendar meeting draft. Call the 'Done' tool to end the email assistant workflow.", "tool_call_id": tool_call["id"]})
+                # Update the memory by reflecting on the full message history including the schedule_meeting tool call
+                update_memory(store, ("email_assistant", "triage_preferences"), [{
+                    "role": "user",
+                    "content": f"The user ignored the calendar meeting draft. That means they did not want to schedule a meeting for this email. Update the triage preferences to ensure emails of this type are not classified as respond."
+                }] + state["messages"] + result)
+
+            elif tool_call["name"] == "Question":
+                # Don't execute the tool, and tell the agent how to proceed
+                result.append({"role": "tool", "content": "User ignored this question. Proceed with the context that you have and don't ask the user any more questions.", "tool_call_id": tool_call["id"]})
+                # Update the memory by reflecting on the full message history including the Question tool call
+                update_memory(store, ("email_assistant", "background"), [{
+                    "role": "user",
+                    "content": f"User has provided answer to a question posed by the agent. Use this to update the background information."
+                }] + state["messages"] + result)
+
+            else:
+                raise ValueError(f"Invalid tool call: {tool_call['name']}")
 
         elif response["type"] == "response":
             # User provided feedback
             user_feedback = response["args"]
-            result.append({"role": "tool", "content": f"Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
-            # Also update relevant domain-specific memory
             if tool_call["name"] == "write_email":
-                # Add context about email response preferences
-                response_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"Here is feedback on how to respond to emails: {user_feedback}"}]
-                })
+                # Don't execute the tool, and add a message with the user feedback to incorporate into the email
+                result.append({"role": "tool", "content": f"User gave feedback, which can we incorporate into the email. Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
+                update_memory(store, ("email_assistant", "response_preferences"), [{
+                    "role": "user",
+                    "content": f"Update response preferences based upon these messages:"
+                }] + state["messages"] + result)
+
             elif tool_call["name"] == "schedule_meeting":
-                # Add context about calendar preferences
-                cal_preferences_memory_manager.invoke({
-                    "messages": state["messages"] + [{"role": "user", "content": f"Here is feedback on calendar scheduling: {user_feedback}"}]
-                })
+                # Don't execute the tool, and add a message with the user feedback to incorporate into the email
+                result.append({"role": "tool", "content": f"User gave feedback, which can we incorporate into the meeting request. Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
+                update_memory(store, ("email_assistant", "cal_preferences"), [{
+                    "role": "user",
+                    "content": f"Update calendar preferences based upon these messages:"
+                }] + state["messages"] + result)
+
+            elif tool_call["name"] == "Question":
+                # Don't execute the tool, and add a message with the user feedback to incorporate into the email
+                result.append({"role": "tool", "content": f"User answered the question, which can we can use for any follow up actions. Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
+                update_memory(store, ("email_assistant", "background"), [{
+                    "role": "user",
+                    "content": f"Update background information based upon these messages:"
+                }] + state["messages"] + result)
+
+            else:
+                raise ValueError(f"Invalid tool call: {tool_call['name']}")
 
     return {"messages": result}
 ```
@@ -599,7 +631,6 @@ def interrupt_handler(state: State, store: BaseStore):
 This is the same as before. 
 
 ```python
-
 # Conditional edge function
 def should_continue(state: State) -> Literal["interrupt_handler", END]:
     """Route to tool handler, or end if Done tool called"""
@@ -631,7 +662,7 @@ agent_builder.add_conditional_edges(
 )
 agent_builder.add_edge("interrupt_handler", "llm_call")
 
-# Compile the agent - nodes will receive store parameter automatically
+# Compile the agent
 response_agent = agent_builder.compile()
 
 # Build overall workflow with store and checkpointer
@@ -644,15 +675,52 @@ overall_workflow = (
 )
 ```
 
-Now, we can compile the graph with the store.
+## Testing the agent with memory
+
+Let's build a helper function to display the memory content so we can see how it changes as we run the graph.
+
 ```python
 import uuid 
 from langgraph.checkpoint.memory import MemorySaver
-checkpointer = MemorySaver()
-store = InMemoryStore()
+from langgraph.types import Command
+from langgraph.store.memory import InMemoryStore
 
-# Respond
-email_input =  {
+# Helper function to display memory content
+def display_memory_content(store, namespace=None):
+    # Display current memory content for all namespaces
+    print("\n======= CURRENT MEMORY CONTENT =======")
+    if namespace:
+        memory = store.get(namespace, "user_preferences")
+        if memory:
+            print(f"\n--- {namespace[1]} ---")
+            print({"preferences": memory.value})
+        else:
+            print(f"\n--- {namespace[1]} ---")
+            print("No memory found")
+    else:
+        for namespace in [
+            ("email_assistant", "triage_preferences"),
+            ("email_assistant", "response_preferences"),
+            ("email_assistant", "cal_preferences"),
+            ("email_assistant", "background")
+        ]:
+            memory = store.get(namespace, "user_preferences")
+            if memory:
+                print(f"\n--- {namespace[1]} ---")
+                print({"preferences": memory.value})
+            else:
+                print(f"\n--- {namespace[1]} ---")
+                print("No memory found")
+            print("=======================================\n")
+```
+
+## Accept `write_email` and `schedule_meeting`
+
+This test simulates an email that gets classified as "respond" and the agent creates a schedule_meeting and write_email tool call that the user accepts.
+
+```python
+# Respond - Meeting Request Email
+email_input_respond = {
     "to": "Lance Martin <lance@company.com>",
     "author": "Project Manager <pm@client.com>",
     "subject": "Tax season let's schedule call",
@@ -660,36 +728,657 @@ email_input =  {
 }
 
 # Compile the graph
+checkpointer = MemorySaver()
+store = InMemoryStore()
 graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
-thread_config = {"configurable": {"thread_id": uuid.uuid4()}}
+thread_id_1 = uuid.uuid4()
+thread_config_1 = {"configurable": {"thread_id": thread_id_1}}
+
+# Run the graph until the first interrupt 
+# Email will be classified as "respond" 
+# Agent will create a schedule_meeting and write_email tool call
+print("Running the graph until the first interrupt...")
+for chunk in graph.stream({"email_input": email_input_respond}, config=thread_config_1):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after first interrupt
+display_memory_content(store)
+```
+
+Accept the schedule_meeting tool call
+
+```python
+print(f"\nSimulating user accepting the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "accept"}]), config=thread_config_1):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+```
+
+Accept the write_email tool call
+
+```python
+print(f"\nSimulating user accepting the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "accept"}]), config=thread_config_1):
+    # Inspect response_agent most recent message
+    if 'response_agent' in chunk:
+        chunk['response_agent']['messages'][-1].pretty_print()
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after accepting the write_email tool call
+display_memory_content(store)
+```
+
+We can look at the full messages, and the trace: 
+
+https://smith.langchain.com/public/380f8bd8-0fc4-402f-9877-2a9f542b7024/r
+
+You'll notice that memory is used by the LLM but *not* updated, because we haven't any feedback via HITL.
+
+```python
+state = graph.get_state(thread_config_1)
+for m in state.values['messages']:
+    m.pretty_print()
+```
+
+## Edit `write_email` and `schedule_meeting`
+
+The agent creates a schedule_meeting and write_email tool call that the user edits.
+
+```python
+# Same email as before
+email_input_respond = {
+    "to": "Lance Martin <lance@company.com>",
+    "author": "Project Manager <pm@client.com>",
+    "subject": "Tax season let's schedule call",
+    "email_thread": "Lance,\n\nIt's tax season again, and I wanted to schedule a call to discuss your tax planning strategies for this year. I have some suggestions that could potentially save you money.\n\nAre you available sometime next week? Tuesday or Thursday afternoon would work best for me, for about 45 minutes.\n\nRegards,\nProject Manager"
+}
+
+# Compile the graph with new thread
+checkpointer = MemorySaver()
+store = InMemoryStore()
+graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
+thread_id_2 = uuid.uuid4()
+thread_config_2 = {"configurable": {"thread_id": thread_id_2}}
+
+# Run the graph until the first interrupt - will be classified as "respond" and the agent will create a write_email tool call
+print("Running the graph until the first interrupt...")
+for chunk in graph.stream({"email_input": email_input_respond}, config=thread_config_2):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after first interrupt
+display_memory_content(store,("email_assistant", "cal_preferences"))
+```
+
+Edit the schedule_meeting tool call.
+
+```python
+# Now simulate user editing the schedule_meeting tool call
+print("\nSimulating user editing the schedule_meeting tool call...")
+edited_schedule_args = {
+    "attendees": ["pm@client.com", "lance@company.com"],
+    "subject": "Tax Planning Discussion",
+    "duration_minutes": 30,  # Changed from 45 to 30
+    "preferred_day": "Thursday",
+    "start_time": 14  # 2pm
+}
+for chunk in graph.stream(Command(resume=[{"type": "edit", "args": {"args": edited_schedule_args}}]), config=thread_config_2):
+    # Inspect response_agent most recent message
+    if 'response_agent' in chunk:
+        chunk['response_agent']['messages'][-1].pretty_print()
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after editing schedule_meeting
+print("\nChecking memory after editing schedule_meeting:")
+display_memory_content(store,("email_assistant", "cal_preferences"))
+```
+
+Edit the write_email tool call.
+
+```python
+display_memory_content(store,("email_assistant", "response_preferences"))
+# Now simulate user editing the write_email tool call
+print("\nSimulating user editing the write_email tool call...")
+edited_email_args = {
+    "to": "pm@client.com",
+    "subject": "Re: Tax season let's schedule call",
+    "content": "Thanks! I scheduled a 30-minute call next Thursday at 3:00 PM. Would that work for you?\n\nBest regards,\nLance Martin"
+}
+for chunk in graph.stream(Command(resume=[{"type": "edit", "args": {"args": edited_email_args}}]), config=thread_config_2):
+    # Inspect response_agent most recent message
+    if 'response_agent' in chunk:
+        chunk['response_agent']['messages'][-1].pretty_print()
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after editing write_email
+print("\nChecking memory after editing write_email:")
+display_memory_content(store,("email_assistant", "response_preferences"))
+```
+
+Look at the full message history to see the edited tool calls: 
+
+https://smith.langchain.com/public/084befc1-230b-4092-8673-a49e747bbeee/r
+
+```python
+state = graph.get_state(thread_config_2)
+for m in state.values['messages']:
+    m.pretty_print()
+```
+
+We can look specifically at the memory update:
+
+https://smith.langchain.com/public/7acb009c-c308-4970-9bbf-5798037841c7/r
+
+The main difference between the original and updated user preferences is the addition of a new bullet point under the "When responding to meeting scheduling requests" section:
+
+* When proposing a meeting time, suggest a specific day, date, and time, and confirm if it works for the recipient.
+
+This feedback was incorporated based on the user's edited email response which showed a preference for:
+
+* Writing more concise emails
+* Being specific about meeting details (day, time, duration)
+* Explicitly asking for confirmation ("Would that work for you?")
+
+## Ignore `write_email`, `schedule_meeting`, and `question`
+
+This tests the user ignoring write_email, schedule_meeting, and question tool calls.
+
+```python
+# Respond - Meeting Request Email
+email_input_respond = {
+    "to": "Lance Martin <lance@company.com>",
+    "author": "Project Manager <pm@client.com>",
+    "subject": "Tax season let's schedule call",
+    "email_thread": "Lance,\n\nIt's tax season again, and I wanted to schedule a call to discuss your tax planning strategies for this year. I have some suggestions that could potentially save you money.\n\nAre you available sometime next week? Tuesday or Thursday afternoon would work best for me, for about 45 minutes.\n\nRegards,\nProject Manager"
+}
+
+# Compile the graph
+checkpointer = MemorySaver()
+store = InMemoryStore()
+graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
+thread_id_3 = uuid.uuid4()
+thread_config_3 = {"configurable": {"thread_id": thread_id_3}}
+
+# Run the graph until the first interrupt 
+# Email will be classified as "respond" 
+# Agent will create a schedule_meeting and write_email tool call
+print("Running the graph until the first interrupt...")
+for chunk in graph.stream({"email_input": email_input_respond}, config=thread_config_3):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after first interrupt
+display_memory_content(store, ("email_assistant", "cal_preferences"))
+```
+
+Ignore the schedule_meeting tool call.
+
+```python
+print(f"\nSimulating user ignoring the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "ignore"}]), config=thread_config_3):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after ignoring first tool call
+print("\nChecking memory after ignoring first tool call:")
+display_memory_content(store, ("email_assistant", "triage_preferences"))
+```
+
+We can see the calendar preferences are updated based upon the fact that the user ignored the schedule_meeting tool call. TODO: Update prompt. 
+
+https://smith.langchain.com/public/3aac63c3-325b-4585-828d-2095b0c4c461/r
+
+Now, we ignore the write_email tool call.
+
+```python
+print(f"\nSimulating user ignoring the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "ignore"}]), config=thread_config_3):
+    # Inspect response_agent most recent message
+    if 'response_agent' in chunk:
+        chunk['response_agent']['messages'][-1].pretty_print()
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after ignoring second tool call
+print("\nChecking memory after ignoring second tool call:")
+display_memory_content(store)
+```
+
+We can see that this updates the triage preferences to reflect the fact that the user ignored the write_email tool call.
+
+https://smith.langchain.com/public/4061e6d7-23e6-43cd-aaf1-26edd3d10d72/r
+
+Look at the full message history.
+
+We can see that agent does not create a meeting and does not write the email. 
+
+```python
+state = graph.get_state(thread_config_3)
+for m in state.values['messages']:
+    m.pretty_print()
+```
+
+Now let's try an email that calls the `Question` tool.
+
+```python
+# Respond - Meeting Request Email
+email_input_respond = {
+    "to": "Lance Martin <lance@company.com>",
+    "author": "Partner <partner@home.com>",
+    "subject": "Meet Jim and Lisa for brunch in 3 weeks?",
+    "email_thread": "Hey, should we invite Jim and Lisa to brunch in 3 weeks? We could go to the new place on 17th that everyone is talking about."
+}
+
+# Compile the graph
+checkpointer = MemorySaver()
+store = InMemoryStore()
+graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
+thread_id_4 = uuid.uuid4()
+thread_config_4 = {"configurable": {"thread_id": thread_id_4}}
+
+# Run the graph until the first interrupt 
+# Email will be classified as "respond" 
+# Agent will create a schedule_meeting and write_email tool call
+print("Running the graph until the first interrupt...")
+for chunk in graph.stream({"email_input": email_input_respond}, config=thread_config_4):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after first interrupt for Question tool
+display_memory_content(store)
+```
+
+Ignore the question tool call.
+
+```python
+print(f"\nSimulating user ignoring the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "ignore"}]), config=thread_config_4):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after ignoring Question tool
+print("\nChecking memory after ignoring Question tool:")
+display_memory_content(store)
+```
+
+And just accept the write_email tool call.
+
+```python
+print(f"\nSimulating user accepting the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "accept"}]), config=thread_config_4):
+    # Inspect response_agent most recent message
+    if 'response_agent' in chunk:
+        chunk['response_agent']['messages'][-1].pretty_print()
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after accepting write_email after ignoring Question
+print("\nChecking memory after accepting write_email (after ignoring Question):")
+display_memory_content(store)
+```
+
+Look at the full message history.
+
+We can see that agent does not create a meeting and does not write the email. 
+
+```python
+state = graph.get_state(thread_config_4)
+for m in state.values['messages']:
+    m.pretty_print()
+```
+
+## Respond (with feedback) `write_email`, `schedule_meeting`, and `question`
+
+This tests the user responding to write_email, schedule_meeting, and question tool calls with feedback.
+
+```python
+# Respond - Meeting Request Email
+email_input_respond = {
+    "to": "Lance Martin <lance@company.com>",
+    "author": "Project Manager <pm@client.com>",
+    "subject": "Tax season let's schedule call",
+    "email_thread": "Lance,\n\nIt's tax season again, and I wanted to schedule a call to discuss your tax planning strategies for this year. I have some suggestions that could potentially save you money.\n\nAre you available sometime next week? Tuesday or Thursday afternoon would work best for me, for about 45 minutes.\n\nRegards,\nProject Manager"
+}
+
+# Compile the graph
+checkpointer = MemorySaver()
+store = InMemoryStore()
+graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
+thread_id_5 = uuid.uuid4()
+thread_config_5 = {"configurable": {"thread_id": thread_id_5}}
+
+# Run the graph until the first interrupt 
+# Email will be classified as "respond" 
+# Agent will create a schedule_meeting and write_email tool call
+print("Running the graph until the first interrupt...")
+for chunk in graph.stream({"email_input": email_input_respond}, config=thread_config_5):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after first interrupt 
+display_memory_content(store)
+```
+
+Provide feedback for the schedule_meeting tool call.
+
+```python
+print(f"\nSimulating user providing feedback for the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "response", "args": "Please schedule this for 30 minutes instead of 45 minutes, and I prefer afternoon meetings after 2pm."}]), config=thread_config_5):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after providing feedback for schedule_meeting
+print("\nChecking memory after providing feedback for schedule_meeting:")
+display_memory_content(store)
+```
+
+Accept the schedule_meeting tool call after providing feedback.
+
+```python
+print(f"\nSimulating user accepting the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "accept"}]), config=thread_config_5):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after accepting schedule_meeting after feedback
+print("\nChecking memory after accepting schedule_meeting after feedback:")
+display_memory_content(store)
+```
+
+Now provide feedback for the write_email tool call.
+
+```python
+print(f"\nSimulating user providing feedback for the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "response", "args": "Shorter and less formal. Include a closing statement about looking forward to the meeting!"}]), config=thread_config_5):
+    # Inspect response_agent most recent message
+    if 'response_agent' in chunk:
+        chunk['response_agent']['messages'][-1].pretty_print()
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after providing feedback for write_email
+print("\nChecking memory after providing feedback for write_email:")
+display_memory_content(store)
+```
+
+Accept the write_email tool call after providing feedback.
+
+```python
+print(f"\nSimulating user accepting the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "accept"}]), config=thread_config_5):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after accepting write_email after feedback
+print("\nChecking memory after accepting write_email after feedback:")
+display_memory_content(store)
+```
+
+Look at the full message history.
+
+```python
+state = graph.get_state(thread_config_5)
+for m in state.values['messages']:
+    m.pretty_print()
+```
+
+Now let's try an email that calls the `Question` tool to provide feedback.
+
+```python
+# Respond - Meeting Request Email
+email_input_respond = {
+    "to": "Lance Martin <lance@company.com>",
+    "author": "Partner <partner@home.com>",
+    "subject": "Meet Jim and Lisa for brunch in 3 weeks?",
+    "email_thread": "Hey, should we invite Jim and Lisa to brunch in 3 weeks? We could go to the new place on 17th that everyone is talking about."
+}
+
+# Compile the graph
+checkpointer = MemorySaver()
+store = InMemoryStore()
+graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
+thread_id_6 = uuid.uuid4()
+thread_config_6 = {"configurable": {"thread_id": thread_id_6}}
 
 # Run the graph until the first interrupt
-for chunk in graph.stream({"email_input": email_input}, config=thread_config):
-   print(chunk)
+print("Running the graph until the first interrupt...")
+for chunk in graph.stream({"email_input": email_input_respond}, config=thread_config_6):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after first interrupt for Question tool
+display_memory_content(store)
 ```
 
-Add feedback:
+Provide feedback for the Question tool call.
+
 ```python
-from langgraph.types import Command
-# response = adds FEEDBACK for future reference, which is not use yet! We need memory to use it.
-for chunk in graph.stream(Command(resume=[{"type": "response", 
-                                          "args": "Always use 30 minute calls in the future!'"}]), config=thread_config):
-   print(chunk)
+print(f"\nSimulating user providing feedback for the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "response", "args": "Yes, let's invite them, I really like brunch at Jack's, ideally before 11am."}]), config=thread_config_6):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after providing feedback for Question
+print("\nChecking memory after providing feedback for Question:")
+display_memory_content(store)
 ```
 
-Accept all other tool calls:
+Accept the write_email tool call.
+
 ```python
-# Accept the invite
-for chunk in graph.stream(Command(resume=[{"type": "accept", 
-                                          "args": ""}]), config=thread_config):
-   print(chunk)
+print(f"\nSimulating user accepting the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "accept"}]), config=thread_config_6):
+    # Inspect response_agent most recent message
+    if 'response_agent' in chunk:
+        chunk['response_agent']['messages'][-1].pretty_print()
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after accepting write_email after answering Question
+print("\nChecking memory after accepting write_email after answering Question:")
+display_memory_content(store)
 ```
 
-See that our feedback is now in the `cal_preferences` memory:
+Look at the full message history.
+
 ```python
-# See that our feedback is now in the memory
-results = store.search(("email_assistant", "cal_preferences"))
-results[0].value['content']
+state = graph.get_state(thread_config_6)
+for m in state.values['messages']:
+    m.pretty_print()
+```
+
+## Test Case for Notify Classification
+
+This test simulates an email that gets classified as "notify" and the user decides to respond with feedback.
+
+```python
+# Notify - Important FYI Email
+email_input_notify = {
+    "to": "Team Members <team@company.com>",
+    "author": "IT Department <it@company.com>",
+    "subject": "Critical Security Update",
+    "email_thread": "Dear Team,\n\nThis is an important security notification. We will be updating our authentication system this weekend. During the update window (Saturday 2am-4am), you will not be able to access company resources.\n\nPlease ensure you log out of all systems before the maintenance window.\n\nRegards,\nIT Department"
+}
+
+# Compile the graph with new thread
+checkpointer = MemorySaver()
+store = InMemoryStore()
+graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
+thread_id_7 = uuid.uuid4()
+thread_config_7 = {"configurable": {"thread_id": thread_id_7}}
+
+# Run the graph until the first interrupt - should be classified as "notify"
+print("Running the graph until the first interrupt...")
+for chunk in graph.stream({"email_input": email_input_notify}, config=thread_config_7):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after first interrupt for Notify
+display_memory_content(store)
+```
+
+Now simulate user deciding to respond with feedback.
+
+```python
+print("\nSimulating user deciding to respond with feedback...")
+for chunk in graph.stream(Command(resume=[{"type": "response", "args": "We should acknowledge receipt of this important notice and confirm that we'll be logged out before the maintenance window."}]), config=thread_config_7):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after responding with feedback to Notify
+print("\nChecking memory after responding with feedback to Notify:")
+display_memory_content(store)
+```
+
+Accept the write_email tool call after feedback.
+
+```python
+print(f"\nSimulating user accepting the {Interrupt_Object.value[0]['action_request']['action']} tool call...")
+for chunk in graph.stream(Command(resume=[{"type": "accept"}]), config=thread_config_7):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after accepting write_email for Notify
+print("\nChecking memory after accepting write_email for Notify:")
+display_memory_content(store)
+```
+
+Look at the full message history.
+
+```python
+state = graph.get_state(thread_config_7)
+for m in state.values['messages']:
+    m.pretty_print()
+```
+
+## Test Case for Notify + Ignore
+
+This test simulates an email that gets classified as "notify" and the user decides to ignore it.
+
+```python
+# Notify - Important FYI Email
+email_input_notify = {
+    "to": "Team Members <team@company.com>",
+    "author": "HR Department <hr@company.com>",
+    "subject": "Company Picnic Next Month",
+    "email_thread": "Dear Team,\n\nWe're planning the annual company picnic for next month. The tentative date is Saturday, June 15th from noon to 4pm at Central Park. There will be food, games, and activities for families.\n\nMore details will follow in the coming weeks.\n\nRegards,\nHR Department"
+}
+
+# Compile the graph with new thread
+checkpointer = MemorySaver()
+store = InMemoryStore()
+graph = overall_workflow.compile(checkpointer=checkpointer, store=store)
+thread_id_8 = uuid.uuid4()
+thread_config_8 = {"configurable": {"thread_id": thread_id_8}}
+
+# Run the graph until the first interrupt - should be classified as "notify"
+print("Running the graph until the first interrupt...")
+for chunk in graph.stream({"email_input": email_input_notify}, config=thread_config_8):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after first interrupt for Notify + Ignore
+display_memory_content(store)
+```
+
+Now simulate user deciding to ignore the notification.
+
+```python
+print("\nSimulating user deciding to ignore the notification...")
+for chunk in graph.stream(Command(resume=[{"type": "ignore"}]), config=thread_config_8):
+    # Inspect interrupt object if present
+    if '__interrupt__' in chunk:
+        Interrupt_Object = chunk['__interrupt__'][0]
+        print("\nINTERRUPT OBJECT:")
+        print(f"Action Request: {Interrupt_Object.value[0]['action_request']}")
+
+# Check memory after ignoring Notify
+print("\nChecking memory after ignoring Notify:")
+display_memory_content(store)
+```
+
+Look at the full message history.
+
+```python
+state = graph.get_state(thread_config_8)
+for m in state.values['messages']:
+    m.pretty_print()
 ```
 
 ## Testing with Local Deployment
