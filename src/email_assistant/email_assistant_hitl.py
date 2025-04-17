@@ -338,7 +338,7 @@ def interrupt_handler(state: State):
                 result.append({"role": "tool", "content": "User ignored this email draft. Call the 'Done' tool to end the email assistant workflow.", "tool_call_id": tool_call["id"]})
             elif tool_call["name"] == "schedule_meeting":
                 # Don't execute the tool, and tell the agent how to proceed
-                result.append({"role": "tool", "content": "User ignored this calendar meeting draft. Call the 'write_email' tool to respond, but don't include the meeting details in the email.", "tool_call_id": tool_call["id"]})
+                result.append({"role": "tool", "content": "User ignored this calendar meeting draft. Call the 'Done' tool to end the email assistant workflow.", "tool_call_id": tool_call["id"]})
             elif tool_call["name"] == "Question":
                 # Don't execute the tool, and tell the agent how to proceed
                 result.append({"role": "tool", "content": "User ignored this question. Proceed with the context that you have and don't ask the user any more questions.", "tool_call_id": tool_call["id"]})
