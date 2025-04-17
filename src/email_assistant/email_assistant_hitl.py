@@ -1,4 +1,5 @@
 from typing import Literal
+from datetime import datetime
 from pydantic import BaseModel
 
 from langchain.chat_models import init_chat_model
@@ -20,11 +21,12 @@ def write_email(to: str, subject: str, content: str) -> str:
 
 @tool
 def schedule_meeting(
-    attendees: list[str], subject: str, duration_minutes: int, preferred_day: str, start_time: int
+    attendees: list[str], subject: str, duration_minutes: int, preferred_day: datetime, start_time: int
 ) -> str:
     """Schedule a calendar meeting."""
     # Placeholder response - in real app would check calendar and schedule
-    return f"Meeting '{subject}' scheduled on {preferred_day} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
+    date_str = preferred_day.strftime("%A, %B %d, %Y")
+    return f"Meeting '{subject}' scheduled on {date_str} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
 
 @tool
 def check_calendar_availability(day: str) -> str:
@@ -208,11 +210,14 @@ def llm_call(state: State):
         ]
     }
 
-def interrupt_handler(state: State):
+def interrupt_handler(state: State) -> Command[Literal["llm_call", "__end__"]]:
     """Creates an interrupt for human review of tool calls"""
     
     # Store messages
     result = []
+
+    # Go to the LLM call node next
+    goto = "llm_call"
 
     # Iterate over the tool calls in the last message
     for tool_call in state["messages"][-1].tool_calls:
@@ -335,13 +340,19 @@ def interrupt_handler(state: State):
         elif response["type"] == "ignore":
             if tool_call["name"] == "write_email":
                 # Don't execute the tool, and tell the agent how to proceed
-                result.append({"role": "tool", "content": "User ignored this email draft. Call the 'Done' tool to end the email assistant workflow.", "tool_call_id": tool_call["id"]})
+                result.append({"role": "tool", "content": "User ignored this email draft. Ignore this email and end the workflow.", "tool_call_id": tool_call["id"]})
+                # Go to END
+                goto = END
             elif tool_call["name"] == "schedule_meeting":
                 # Don't execute the tool, and tell the agent how to proceed
-                result.append({"role": "tool", "content": "User ignored this calendar meeting draft. Call the 'Done' tool to end the email assistant workflow.", "tool_call_id": tool_call["id"]})
+                result.append({"role": "tool", "content": "User ignored this calendar meeting draft. Ignore this email and end the workflow.", "tool_call_id": tool_call["id"]})
+                # Go to END
+                goto = END
             elif tool_call["name"] == "Question":
                 # Don't execute the tool, and tell the agent how to proceed
-                result.append({"role": "tool", "content": "User ignored this question. Proceed with the context that you have and don't ask the user any more questions.", "tool_call_id": tool_call["id"]})
+                result.append({"role": "tool", "content": "User ignored this question. Ignore this email and end the workflow.", "tool_call_id": tool_call["id"]})
+                # Go to END
+                goto = END
             else:
                 raise ValueError(f"Invalid tool call: {tool_call['name']}")
             
@@ -364,7 +375,12 @@ def interrupt_handler(state: State):
         else:
             raise ValueError(f"Invalid response: {response}")
             
-    return {"messages": result}
+    # Update the state 
+    update = {
+        "messages": result,
+    }
+
+    return Command(goto=goto, update=update)
 
 # Conditional edge function
 def should_continue(state: State) -> Literal["interrupt_handler", END]:
@@ -395,7 +411,6 @@ agent_builder.add_conditional_edges(
         END: END,
     },
 )
-agent_builder.add_edge("interrupt_handler", "llm_call")
 
 # Compile the agent
 response_agent = agent_builder.compile()

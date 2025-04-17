@@ -1,4 +1,5 @@
 from typing import Literal
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -20,11 +21,12 @@ def write_email(to: str, subject: str, content: str) -> str:
 
 @tool
 def schedule_meeting(
-    attendees: list[str], subject: str, duration_minutes: int, preferred_day: str, start_time: int
+    attendees: list[str], subject: str, duration_minutes: int, preferred_day: datetime, start_time: int
 ) -> str:
     """Schedule a calendar meeting."""
     # Placeholder response - in real app would check calendar and schedule
-    return f"Meeting '{subject}' scheduled on {preferred_day} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
+    date_str = preferred_day.strftime("%A, %B %d, %Y")
+    return f"Meeting '{subject}' scheduled on {date_str} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
 
 @tool
 def check_calendar_availability(day: str) -> str:
