@@ -44,7 +44,6 @@ uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 lang
 
 ![Screenshot 2025-04-04 at 4 06 18 PM](notebooks/img/studio.png)
 
-
 ### Evaluation 
 * Notebook: `notebooks/evaluation.ipynb`
 * `eval` and `tests` directories
@@ -82,3 +81,78 @@ Our email assistant becomes more powerful when we add memory capabilities, allow
 ### Deployment 
 
 We've built up to a system that can learn our preferences over time. The graph already can be run with LangGraph Platform locally using the `langgraph dev` command and deployed to the LangGraph Platform hosted service.
+
+## Integrations
+
+### Default
+
+By default, the assistant simply uses some mock email tools and allows used to pass in mock data.
+
+### Gmail
+
+If you want to use your own Gmail data for testing the email assistant, follow these steps:
+
+### 1. Set up Google Cloud Project and Enable Gmail API
+1. Enable the Gmail API by clicking the blue "Enable API" button [here](https://developers.google.com/gmail/api/quickstart/python#enable_the_api)
+2. Configure the OAuth consent screen:
+   - If you're using a personal email (non-Google Workspace), select "External" as the User Type
+   - Add your email as a test user under "OAuth consent screen" > "Test users" to avoid the "App has not completed verification" error
+   - The "Internal" option only works for Google Workspace accounts
+
+### 2. Create Credentials
+1. In the Google Cloud Console, navigate to "Credentials"
+2. Click "Create Credentials" and select "OAuth client ID"
+3. Choose "Desktop application" as the application type
+4. Name your OAuth client and click "Create"
+5. Download the client secret JSON file
+
+### 3. Set Up Authentication Files
+```bash
+# Create a secrets directory
+mkdir -p data_loader/gmail/.secrets
+
+# Move your downloaded client secret to the secrets directory
+mv /path/to/downloaded/client_secret.json data_loader/gmail/.secrets/secrets.json
+
+# Run the Gmail setup script
+python data_loader/gmail/setup_gmail.py
+```
+
+The setup script will:
+1. Open a browser window for you to authenticate with your Google account
+2. Generate a `token.json` file in the `.secrets` directory
+3. This token will be used for Gmail API access
+
+### 4. Run the Gmail Ingestion Script
+Once you have authentication set up, you can run the Gmail ingestion script to fetch emails and process them with your email assistant:
+
+#### Local 
+
+1. Run the graph locally:
+```
+langgraph dev
+```
+
+2. Run ingestion script:
+```bash
+# Set your email address as an environment variable (or use --email parameter)
+export EMAIL_ADDRESS=your.email@gmail.com
+
+# Basic usage (defaults to email_assistant_hitl_memory graph)
+python data_loader/gmail/run_ingest.py
+
+# Parameters 
+python data_loader/gmail/run_ingest.py --minutes-since 60 --rerun 1 --early 0 --email rlance.martin@gmail.com
+```
+
+#### Important Parameters:
+- `--graph-name`: Name of the LangGraph to use (default: "email_assistant_hitl_memory")
+- `--email`: The email address to fetch messages from (alternative to setting EMAIL_ADDRESS)
+- `--minutes-since`: Only process emails that are newer than this many minutes (default: 60)
+- `--url`: URL of the LangGraph deployment (default: http://127.0.0.1:2024)
+- `--log-dir`: Directory to store email logs (default: "email_logs")
+
+Note: If you encounter a "Token has been expired or revoked" error, delete the existing `token.json` file and run the setup script again to generate a fresh token.
+
+3. View in agent inbox:
+https://dev.agentinbox.ai/

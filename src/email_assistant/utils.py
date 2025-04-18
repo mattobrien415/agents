@@ -62,15 +62,27 @@ Arguments:"""
             display += f"\n{tool_call['args']}\n"
     return display
 
-def parse_email(email_input: dict) -> dict:
-    """Parse an email input dictionary.
+def parse_email(email_input: dict) -> tuple[str, str, str, str]:
+    """Parse an email input dictionary, supporting multiple schemas.
+
+    Supports both standard schema (author, to, subject, email_thread) and 
+    Gmail-specific schema (from_email, to_email, subject, page_content).
 
     Args:
-        email_input (dict): Dictionary containing email fields:
-            - author: Sender's name and email
-            - to: Recipient's name and email
-            - subject: Email subject line
-            - email_thread: Full email content
+        email_input (dict): Dictionary containing email fields in either format:
+            Standard schema:
+                - author: Sender's name and email
+                - to: Recipient's name and email
+                - subject: Email subject line
+                - email_thread: Full email content
+            Gmail schema:
+                - from_email: Sender's email
+                - to_email: Recipient's email
+                - subject: Email subject line
+                - page_content: Full email content
+                - id: Gmail message ID
+                - thread_id: Gmail thread ID
+                - send_time: Time the email was sent
 
     Returns:
         tuple[str, str, str, str]: Tuple containing:
@@ -79,12 +91,35 @@ def parse_email(email_input: dict) -> dict:
             - subject: Email subject line
             - email_thread: Full email content
     """
-    return (
-        email_input["author"],
-        email_input["to"],
-        email_input["subject"],
-        email_input["email_thread"],
-    )
+    # Detect schema based on keys present in the input
+    if "author" in email_input and "email_thread" in email_input:
+        # Standard schema
+        return (
+            email_input["author"],
+            email_input["to"],
+            email_input["subject"],
+            email_input["email_thread"],
+        )
+    elif "from_email" in email_input and "page_content" in email_input:
+        # Gmail schema
+        return (
+            email_input["from_email"],
+            email_input["to_email"],
+            email_input["subject"],
+            email_input["page_content"],
+        )
+    else:
+        # Unknown schema, try to handle gracefully by looking for equivalent fields
+        author = email_input.get("author") or email_input.get("from_email") or "Unknown Sender"
+        to = email_input.get("to") or email_input.get("to_email") or "Unknown Recipient"
+        subject = email_input.get("subject") or "No Subject"
+        content = (
+            email_input.get("email_thread") or 
+            email_input.get("page_content") or 
+            email_input.get("content") or 
+            "No content available"
+        )
+        return (author, to, subject, content)
 
 def extract_message_content(message) -> str:
     """Extract content from different message types as clean string.
