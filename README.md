@@ -82,77 +82,32 @@ Our email assistant becomes more powerful when we add memory capabilities, allow
 
 We've built up to a system that can learn our preferences over time. The graph already can be run with LangGraph Platform locally using the `langgraph dev` command and deployed to the LangGraph Platform hosted service.
 
-## Integrations
+## Tools and Integrations
 
-### Default
+The email assistant uses a modular tools architecture that allows for different implementations and integrations to be easily swapped. This is structured in the `src/email_assistant/tools` directory:
 
-By default, the assistant simply uses some mock email tools and allows used to pass in mock data.
+- **Default Tools**: By default, the assistant uses mock email and calendar tools for testing and development. These are located in `src/email_assistant/tools/default/`.
 
-### Gmail
+- **Gmail Integration**: For connecting to real email and calendar services, the assistant can use Gmail API integration tools in `src/email_assistant/tools/gmail/`. See the [Gmail Tools README](src/email_assistant/tools/gmail/README.md) for setup instructions.
 
-If you want to use your own Gmail data for testing the email assistant, follow these steps:
+- **Custom Integrations**: The modular architecture makes it easy to add new tool integrations by following the same pattern as the existing tool packages.
 
-### 1. Set up Google Cloud Project and Enable Gmail API
-1. Enable the Gmail API by clicking the blue "Enable API" button [here](https://developers.google.com/gmail/api/quickstart/python#enable_the_api)
-2. Configure the OAuth consent screen:
-   - If you're using a personal email (non-Google Workspace), select "External" as the User Type
-   - Add your email as a test user under "OAuth consent screen" > "Test users" to avoid the "App has not completed verification" error
-   - The "Internal" option only works for Google Workspace accounts
+To use a specific set of tools in your agent:
 
-### 2. Create Credentials
-1. In the Google Cloud Console, navigate to "Credentials"
-2. Click "Create Credentials" and select "OAuth client ID"
-3. Choose "Desktop application" as the application type
-4. Name your OAuth client and click "Create"
-5. Download the client secret JSON file
+```python
+# For default tools only
+tools = get_tools()
 
-### 3. Set Up Authentication Files
-```bash
-# Create a secrets directory
-mkdir -p data_loader/gmail/.secrets
+# For including Gmail tools
+tools = get_tools(include_gmail=True)
 
-# Move your downloaded client secret to the secrets directory
-mv /path/to/downloaded/client_secret.json data_loader/gmail/.secrets/secrets.json
-
-# Run the Gmail setup script
-python data_loader/gmail/setup_gmail.py
+# For a specific subset of tools
+tools = get_tools(tool_names=["write_email", "triage_email", "fetch_emails_tool"])
 ```
 
-The setup script will:
-1. Open a browser window for you to authenticate with your Google account
-2. Generate a `token.json` file in the `.secrets` directory
-3. This token will be used for Gmail API access
+For a complete example of using Gmail tools, see `src/email_assistant/gmail_assistant.py`.
 
-### 4. Run the Gmail Ingestion Script
-Once you have authentication set up, you can run the Gmail ingestion script to fetch emails and process them with your email assistant:
+### Agent Inbox
 
-#### Local 
-
-1. Run the graph locally:
-```
-langgraph dev
-```
-
-2. Run ingestion script:
-```bash
-# Set your email address as an environment variable (or use --email parameter)
-export EMAIL_ADDRESS=your.email@gmail.com
-
-# Basic usage (defaults to email_assistant_hitl_memory graph)
-python data_loader/gmail/run_ingest.py
-
-# Parameters 
-python data_loader/gmail/run_ingest.py --minutes-since 60 --rerun 1 --early 0 --email rlance.martin@gmail.com
-```
-
-#### Important Parameters:
-- `--graph-name`: Name of the LangGraph to use (default: "email_assistant_hitl_memory")
-- `--email`: The email address to fetch messages from (alternative to setting EMAIL_ADDRESS)
-- `--minutes-since`: Only process emails that are newer than this many minutes (default: 60)
-- `--url`: URL of the LangGraph deployment (default: http://127.0.0.1:2024)
-- `--log-dir`: Directory to store email logs (default: "email_logs")
-
-Note: If you encounter a "Token has been expired or revoked" error, delete the existing `token.json` file and run the setup script again to generate a fresh token.
-
-3. View in agent inbox:
+When using human-in-the-loop capabilities, you can view and interact with the agent at:
 https://dev.agentinbox.ai/
