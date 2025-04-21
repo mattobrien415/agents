@@ -65,11 +65,13 @@ Arguments:"""
 def parse_email(email_input: dict) -> tuple[str, str, str, str]:
     """Parse an email input dictionary, supporting multiple schemas.
 
-    Supports both standard schema (author, to, subject, email_thread) and 
-    Gmail-specific schema (from_email, to_email, subject, page_content).
+    Supports multiple schema formats:
+    - Standard schema (author, to, subject, email_thread)
+    - Gmail-specific schema (from_email, to_email, subject, page_content)
+    - Direct API schema (from, to, subject, body)
 
     Args:
-        email_input (dict): Dictionary containing email fields in either format:
+        email_input (dict): Dictionary containing email fields in any of these formats:
             Standard schema:
                 - author: Sender's name and email
                 - to: Recipient's name and email
@@ -83,6 +85,11 @@ def parse_email(email_input: dict) -> tuple[str, str, str, str]:
                 - id: Gmail message ID
                 - thread_id: Gmail thread ID
                 - send_time: Time the email was sent
+            Direct API schema:
+                - from: Sender's email
+                - to: Recipient's email
+                - subject: Email subject line
+                - body: Full email content
 
     Returns:
         tuple[str, str, str, str]: Tuple containing:
@@ -108,14 +115,32 @@ def parse_email(email_input: dict) -> tuple[str, str, str, str]:
             email_input["subject"],
             email_input["page_content"],
         )
+    elif "from" in email_input and "body" in email_input:
+        # Direct API schema
+        return (
+            email_input["from"],
+            email_input["to"],
+            email_input["subject"],
+            email_input["body"],
+        )
     else:
         # Unknown schema, try to handle gracefully by looking for equivalent fields
-        author = email_input.get("author") or email_input.get("from_email") or "Unknown Sender"
-        to = email_input.get("to") or email_input.get("to_email") or "Unknown Recipient"
+        author = (
+            email_input.get("author") or
+            email_input.get("from_email") or
+            email_input.get("from") or
+            "Unknown Sender"
+        )
+        to = (
+            email_input.get("to") or 
+            email_input.get("to_email") or
+            "Unknown Recipient"
+        )
         subject = email_input.get("subject") or "No Subject"
         content = (
             email_input.get("email_thread") or 
             email_input.get("page_content") or 
+            email_input.get("body") or
             email_input.get("content") or 
             "No content available"
         )

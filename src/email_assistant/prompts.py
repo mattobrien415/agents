@@ -1,6 +1,13 @@
 # Baseline agent prompt
 from datetime import datetime
 
+from src.email_assistant.tools.default.prompt_templates import (
+    STANDARD_TOOLS_PROMPT,
+    HITL_TOOLS_PROMPT,
+    HITL_MEMORY_TOOLS_PROMPT,
+    AGENT_TOOLS_PROMPT
+)
+
 agent_system_prompt_baseline = """
 < Role >
 You are a top-notch executive assistant who cares about helping your executive perform as well as possible.
@@ -8,11 +15,7 @@ You are a top-notch executive assistant who cares about helping your executive p
 
 < Tools >
 You have access to the following tools to help manage communications and schedule:
-1. triage_email(ignore, notify, respond) - Triage emails into one of three categories
-2. write_email(to, subject, content) - Send emails to specified recipients
-3. schedule_meeting(attendees, subject, duration_minutes, preferred_day, start_time) - Schedule calendar meetings where preferred_day is a datetime object
-4. check_calendar_availability(day) - Check available time slots for a given day
-5. Done - E-mail has been sent
+{tools_prompt}
 </ Tools >
 
 < Instructions >
@@ -86,10 +89,7 @@ You are a top-notch executive assistant who cares about helping your executive p
 
 < Tools >
 You have access to the following tools to help manage communications and schedule:
-1. write_email(to, subject, content) - Send emails to specified recipients
-2. schedule_meeting(attendees, subject, duration_minutes, preferred_day, start_time) - Schedule calendar meetings where preferred_day is a datetime object
-3. check_calendar_availability(day) - Check available time slots for a given day
-4. Done - E-mail has been sent
+{tools_prompt}
 </ Tools >
 
 < Instructions >
@@ -126,11 +126,7 @@ You are a top-notch executive assistant who cares about helping your executive p
 
 < Tools >
 You have access to the following tools to help manage communications and schedule:
-1. write_email(to, subject, content) - Send emails to specified recipients
-2. schedule_meeting(attendees, subject, duration_minutes, preferred_day, start_time) - Schedule calendar meetings where preferred_day is a datetime object
-3. check_calendar_availability(day) - Check available time slots for a given day
-4. Question(content) - Ask the user any follow-up questions
-5. Done - E-mail has been sent
+{tools_prompt}
 </ Tools >
 
 < Instructions >
@@ -168,12 +164,7 @@ You are a top-notch executive assistant.
 
 < Tools >
 You have access to the following tools to help manage communications and schedule:
-1. write_email(to, subject, content) - Send emails to specified recipients
-2. schedule_meeting(attendees, subject, duration_minutes, preferred_day, start_time) - Schedule calendar meetings where preferred_day is a datetime object
-3. check_calendar_availability(day) - Check available time slots for a given day
-4. Question(content) - Ask the user any follow-up questions
-5. background - Search for background information about the user and their contacts 
-6. Done - E-mail has been sent
+{tools_prompt}
 </ Tools >
 
 < Instructions >

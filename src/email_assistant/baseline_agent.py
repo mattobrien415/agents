@@ -1,52 +1,18 @@
 from typing import Literal
-from datetime import datetime
-
-from pydantic import BaseModel
 
 from langchain.chat_models import init_chat_model
-from langchain_core.tools import tool
 
+from src.email_assistant.tools import get_tools, get_tools_by_name
+from src.email_assistant.tools.default.prompt_templates import STANDARD_TOOLS_PROMPT
 from src.email_assistant.prompts import agent_system_prompt_baseline, default_background, default_response_preferences, default_cal_preferences, default_triage_instructions
 from src.email_assistant.schemas import State
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph import MessagesState
 
-# Agent tools 
-@tool
-def write_email(to: str, subject: str, content: str) -> str:
-    """Write and send an email."""
-    # Placeholder response - in real app would send email
-    return f"Email sent to {to} with subject '{subject}'"
-
-@tool
-def schedule_meeting(
-    attendees: list[str], subject: str, duration_minutes: int, preferred_day: datetime, start_time: int
-) -> str:
-    """Schedule a calendar meeting."""
-    # Placeholder response - in real app would check calendar and schedule
-    date_str = preferred_day.strftime("%A, %B %d, %Y")
-    return f"Meeting '{subject}' scheduled on {date_str} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
-
-@tool
-def check_calendar_availability(day: str) -> str:
-    """Check calendar availability for a given day."""
-    # Placeholder response - in real app would check actual calendar
-    return f"Available times on {day}: 9:00 AM, 2:00 PM, 4:00 PM"
-
-@tool
-def triage_email(category: Literal["ignore", "notify", "respond"]) -> str:
-    """Triage an email into one of three categories: ignore, notify, respond."""
-    return f"Classification Decision: {category}"
-
-@tool
-class Done(BaseModel):
-      """E-mail has been sent."""
-      done: bool
-
-# Agent tools default
-tools = [write_email, schedule_meeting, check_calendar_availability, triage_email, Done]
-tools_by_name = {tool.name: tool for tool in tools}
+# Get tools
+tools = get_tools()
+tools_by_name = get_tools_by_name(tools)
 
 # Initialize the LLM, enforcing tool use (of any available tools)
 llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
@@ -63,6 +29,7 @@ def llm_call(state: State):
             llm_with_tools.invoke(
                 [
                     {"role": "system", "content": agent_system_prompt_baseline.format(
+                        tools_prompt=STANDARD_TOOLS_PROMPT,
                         background=default_background,
                         response_preferences=default_response_preferences,
                         cal_preferences=default_cal_preferences, 
@@ -89,6 +56,7 @@ def tool_handler(state: State):
         tool = tools_by_name[tool_call["name"]]
         observation = tool.invoke(tool_call["args"])
         
+        # TODO: These are still hard-coded and would need to be updated if we swap out tools used 
         # Log the classification decision if triage_email was called
         if tool_call["name"] == "triage_email":
             classification_decision = tool_call["args"]["category"]

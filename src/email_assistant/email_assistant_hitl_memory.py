@@ -3,58 +3,20 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from langchain.chat_models import init_chat_model
-from langchain_core.tools import tool
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.store.base import BaseStore
 from langgraph.types import interrupt, Command
 
-from email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_triage_instructions, default_background, default_response_preferences, default_cal_preferences
-from email_assistant.schemas import State, RouterSchema, StateInput
-from email_assistant.utils import parse_email, format_for_display, format_email_markdown
+from src.email_assistant.tools import get_tools, get_tools_by_name
+from src.email_assistant.tools.default.prompt_templates import HITL_MEMORY_TOOLS_PROMPT
+from src.email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_triage_instructions, default_background, default_response_preferences, default_cal_preferences
+from src.email_assistant.schemas import State, RouterSchema, StateInput
+from src.email_assistant.utils import parse_email, format_for_display, format_email_markdown
 
-# Agent tools 
-@tool
-def write_email(to: str, subject: str, content: str) -> str:
-    """Write and send an email."""
-    # Placeholder response - in real app would send email
-    return f"Email sent to {to} with subject '{subject}' and content: {content}"
-
-@tool
-def schedule_meeting(
-    attendees: list[str], subject: str, duration_minutes: int, preferred_day: datetime, start_time: int
-) -> str:
-    """Schedule a calendar meeting."""
-    # Placeholder response - in real app would check calendar and schedule
-    date_str = preferred_day.strftime("%A, %B %d, %Y")
-    return f"Meeting '{subject}' scheduled on {date_str} at {start_time} for {duration_minutes} minutes with {len(attendees)} attendees"
-
-@tool
-def check_calendar_availability(day: str) -> str:
-    """Check calendar availability for a given day."""
-    # Placeholder response - in real app would check actual calendar
-    return f"Available times on {day}: 9:00 AM, 2:00 PM, 4:00 PM"
-
-@tool
-class Question(BaseModel):
-      """Question to ask user."""
-      content: str
-
-@tool
-class Done(BaseModel):
-      """E-mail has been sent."""
-      done: bool
-    
-# All tools available to the agent
-tools = [
-    write_email, 
-    schedule_meeting, 
-    check_calendar_availability, 
-    Question, 
-    Done
-]
-
-tools_by_name = {tool.name: tool for tool in tools}
+# Get tools
+tools = get_tools(["write_email", "schedule_meeting", "check_calendar_availability", "Question", "Done"])
+tools_by_name = get_tools_by_name(tools)
 
 # Initialize the LLM for use with router / structured output
 llm = init_chat_model("openai:gpt-4o", temperature=0.0)
@@ -348,9 +310,12 @@ def llm_call(state: State, store: BaseStore):
         "messages": [
             llm_with_tools.invoke(
                 [
-                    {"role": "system", "content": agent_system_prompt_hitl_memory.format(background=default_background,
-                                                                                         response_preferences=response_preferences, 
-                                                                                         cal_preferences=cal_preferences)}
+                    {"role": "system", "content": agent_system_prompt_hitl_memory.format(
+                        tools_prompt=HITL_MEMORY_TOOLS_PROMPT,
+                        background=default_background,
+                        response_preferences=response_preferences, 
+                        cal_preferences=cal_preferences
+                    )}
                 ]
                 + state["messages"]
             )
