@@ -72,7 +72,9 @@ async def process_emails(args):
                 args.email,
                 minutes_since=args.minutes_since,
                 gmail_token=args.gmail_token,
-                gmail_secret=args.gmail_secret
+                gmail_secret=args.gmail_secret,
+                include_read=args.include_read,
+                skip_filters=args.skip_filters
             ):
                 email_count += 1
                 logger.info(f"Would process email from {email['from_email']} with subject: {email['subject']}")
@@ -158,7 +160,9 @@ async def process_emails(args):
             args.email,
             minutes_since=args.minutes_since,
             gmail_token=args.gmail_token,
-            gmail_secret=args.gmail_secret
+            gmail_secret=args.gmail_secret,
+            include_read=args.include_read,
+            skip_filters=args.skip_filters
         ):
             # Generate a consistent thread ID using MD5 hash
             thread_id = str(
@@ -173,14 +177,15 @@ async def process_emails(args):
                     logger.info(f"Processing email from: {email['from_email']}")
                     logger.info(f"Subject: {email['subject']}")
                     
-                    # Prepare the payload for LangGraph
+                    # Prepare the payload for LangGraph using direct API schema
+                    # Using more intuitive field names
                     payload = {
                         "inputs": {
                             "email_input": {
                                 "from": email["from_email"],
                                 "to": email["to_email"],
                                 "subject": email["subject"],
-                                "body": email["page_content"],
+                                "body": email["page_content"]
                             }
                         }
                     }
@@ -278,7 +283,7 @@ async def process_emails(args):
                             "from": email["from_email"],
                             "to": email["to_email"],
                             "subject": email["subject"],
-                            "body": email["page_content"],
+                            "body": email["page_content"]
                         }},
                         multitask_strategy="rollback",
                     )
@@ -294,7 +299,18 @@ async def process_emails(args):
                 break
                 
     except Exception as e:
-        logger.error(f"Error fetching or processing emails: {str(e)}")
+        error_message = str(e)
+        logger.error(f"Error fetching or processing emails: {error_message}")
+        
+        # Check for connection errors specifically
+        if "connection" in error_message.lower() or "connect" in error_message.lower():
+            logger.error("\n💡 Connection Error: The LangGraph server is not running!")
+            logger.error("\nTo fix this, you have two options:")
+            logger.error("1. Start the LangGraph server in a new terminal window:")
+            logger.error("   cd /Users/rlm/Desktop/Code/interrupt_workshop && langgraph start")
+            logger.error("\n2. Use mock mode to test without a server:")
+            logger.error(f"   python src/email_assistant/tools/gmail/run_ingest.py --email {args.email} --mock")
+        
         return 1
             
     logger.info(f"Email processing complete. Processed {processed_count} emails.")
@@ -350,6 +366,16 @@ def parse_args():
         "--mock",
         action="store_true",
         help="Run in mock mode without requiring a LangGraph server"
+    )
+    parser.add_argument(
+        "--include-read",
+        action="store_true",
+        help="Include emails that have already been read"
+    )
+    parser.add_argument(
+        "--skip-filters",
+        action="store_true",
+        help="Skip filtering of emails (include messages that would normally be filtered out)"
     )
     parser.add_argument(
         "--gmail-token",

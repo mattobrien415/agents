@@ -8,7 +8,6 @@ from datetime import datetime
 from eval.email_dataset import examples_triage
 
 from src.email_assistant.email_assistant import email_assistant
-from email_assistant.baseline_agent import email_assistant as baseline_agent
 
 # Client 
 client = Client()
@@ -49,59 +48,12 @@ def target_email_assistant(inputs: dict) -> dict:
         print(f"Error in workflow agent: {e}")
         return {"classification_decision": "unknown"}
 
-def target_email_assistant_baseline(inputs: dict) -> dict:
-    """Process an email through the baseline email assistant.
-    
-    Args:
-        inputs: A dictionary containing the email_input field from the dataset
-        
-    Returns:
-        A formatted dictionary with the assistant's response messages
-    """
-    try:
-        # Format a better prompt for the baseline agent
-        email_content = inputs["email_input"]
-        formatted_content = f"""
-From: {email_content.get('author', 'Unknown')}
-To: {email_content.get('to', 'Unknown')}
-Subject: {email_content.get('subject', 'No Subject')}
-
-{email_content.get('email_thread', '')}
-"""
-        messages = [{"role": "user", "content": f"Please triage this email: {formatted_content}"}]
-        
-        response = baseline_agent.invoke({"messages": messages})
-        if "classification_decision" in response:
-            return {"classification_decision": response['classification_decision']}
-        else:
-            print("No classification_decision in response from baseline agent")
-            return {"classification_decision": "unknown"}
-    except Exception as e:
-        print(f"Error in baseline agent: {e}")
-        return {"classification_decision": "unknown"}
-
 ## Evaluator 
 feedback_key = "classification" # Key saved to langsmith
 
 def classification_evaluator(outputs: dict, reference_outputs: dict) -> bool:
     """Check if the answer exactly matches the expected answer."""
     return outputs["classification_decision"].lower() == reference_outputs["classification"].lower()
-
-## Run evaluation
-experiment_results_baseline = client.evaluate(
-    # Run agent  
-    target_email_assistant_baseline,
-    # Dataset name  
-    data=dataset_name,
-    # Evaluator
-    evaluators=[
-        classification_evaluator
-    ],
-    # Name of the experiment
-    experiment_prefix="E-mail assistant baseline", 
-    # Number of concurrent evaluations
-    max_concurrency=2, 
-)
 
 experiment_results_workflow = client.evaluate(
     # Run agent 
@@ -120,17 +72,15 @@ experiment_results_workflow = client.evaluate(
 
 ## Add visualization
 # Convert evaluation results to pandas dataframes
-df_baseline = experiment_results_baseline.to_pandas()
 df_workflow = experiment_results_workflow.to_pandas()
 
 # Calculate mean scores (values are on a 0-1 scale)
-baseline_score = df_baseline[f'feedback.classification_evaluator'].mean() if f'feedback.classification_evaluator' in df_baseline.columns else 0.0
 workflow_score = df_workflow[f'feedback.classification_evaluator'].mean() if f'feedback.classification_evaluator' in df_workflow.columns else 0.0
 
 # Create a bar plot comparing the two models
 plt.figure(figsize=(10, 6))
-models = ['Tool Calling Agent', 'Agentic Workflow']
-scores = [baseline_score, workflow_score]
+models = ['Agentic Workflow']
+scores = [workflow_score]
 
 # Create bars with distinct colors
 plt.bar(models, scores, color=['#5DA5DA', '#FAA43A'], width=0.5)
@@ -160,6 +110,5 @@ plt.savefig(plot_path)
 plt.close()
 
 print(f"\nEvaluation visualization saved to: {plot_path}")
-print(f"Baseline Agent Score: {baseline_score:.2f}")
 print(f"Agent With Router Score: {workflow_score:.2f}")
 

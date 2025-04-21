@@ -51,12 +51,13 @@ Once you have authentication set up, you can run the Gmail ingestion script to f
 
 #### Local 
 
-1. Run the graph locally:
+1. Start the LangGraph server in one terminal:
 ```
-langgraph dev
+cd /path/to/project
+langgraph start
 ```
 
-2. Run ingestion script:
+2. Run ingestion script in another terminal:
 ```bash
 # Set your email address as an environment variable (or use --email parameter)
 export EMAIL_ADDRESS=your.email@gmail.com
@@ -65,8 +66,10 @@ export EMAIL_ADDRESS=your.email@gmail.com
 python src/email_assistant/tools/gmail/run_ingest.py
 
 # Parameters 
-python src/email_assistant/tools/gmail/run_ingest.py --minutes-since 60 --rerun 1 --early 0 --email your.email@gmail.com
+python src/email_assistant/tools/gmail/run_ingest.py --minutes-since 1000 --rerun 1 --early 0 --email you.email@gmail.com
 ```
+
+> **Note:** If you don't want to run the LangGraph server, you can use the `--mock` flag to test the email fetching functionality without processing emails through LangGraph.
 
 #### Important Parameters:
 - `--graph-name`: Name of the LangGraph to use (default: "email_assistant_hitl_memory")
@@ -74,8 +77,35 @@ python src/email_assistant/tools/gmail/run_ingest.py --minutes-since 60 --rerun 
 - `--minutes-since`: Only process emails that are newer than this many minutes (default: 60)
 - `--url`: URL of the LangGraph deployment (default: http://127.0.0.1:2024)
 - `--log-dir`: Directory to store email logs (default: "email_logs")
+- `--rerun`: Process emails that have already been processed (1=yes, 0=no, default: 0)
+- `--early`: Stop after processing one email (1=yes, 0=no, default: 0)
+- `--mock`: Run in mock mode without requiring a LangGraph server
+- `--include-read`: Include emails that have already been read (by default only unread emails are processed)
+- `--skip-filters`: Process all emails without filtering (by default only latest messages in threads where you're not the sender are processed)
 
-Note: If you encounter a "Token has been expired or revoked" error, delete the existing `token.json` file and run the setup script again to generate a fresh token.
+#### Flag Combinations:
+- `--rerun 1 --early 0`: Process all emails, including ones previously processed by LangGraph
+- `--rerun 0 --early 1`: Process only one new (previously unprocessed) email and stop
+- `--rerun 1 --early 1`: Process one email (regardless if it was processed before) and stop
+- `--rerun 0 --early 0`: Process only new (previously unprocessed) emails
+- `--include-read --skip-filters`: Process all emails, including ones marked as read and ones that would normally be filtered out
+- `--minutes-since 1000 --include-read --skip-filters`: Process all emails from the past ~16 hours without any filtering
+
+#### Troubleshooting:
+
+- **Missing emails?** The Gmail API applies filters to show only important/primary emails by default. You can:
+  - Increase the `--minutes-since` parameter to a larger value (e.g., 1000) to fetch emails from a longer time period
+  - Use the `--include-read` flag to process emails marked as "read" (by default only unread emails are processed)
+  - Use the `--skip-filters` flag to include all messages (not just the latest in a thread, and including ones you sent)
+  - Try running with all options to process everything: `--include-read --skip-filters --minutes-since 1000`
+  - Use the `--mock` flag to test the system with simulated emails
+
+- **Connection errors:** If you get "Connection refused" or "All connection attempts failed" errors:
+  - Make sure the LangGraph server is running with `langgraph start` in a separate terminal
+  - Verify the port number matches in your script (default is 2024)
+  - Use the `--mock` flag to test without a LangGraph server: `--mock`
+
+- **Authentication issues:** If you encounter a "Token has been expired or revoked" error, delete the existing `token.json` file and run the setup script again to generate a fresh token.
 
 ## Using Gmail Tools in Your Agent
 

@@ -110,6 +110,8 @@ def fetch_group_emails(
     minutes_since: int = 30,
     gmail_token: Optional[str] = None,
     gmail_secret: Optional[str] = None,
+    include_read: bool = False,
+    skip_filters: bool = False,
 ) -> Iterator[Dict[str, Any]]:
     """
     Fetch recent emails from Gmail that involve the specified email address.
@@ -123,6 +125,8 @@ def fetch_group_emails(
         minutes_since: Only retrieve emails newer than this many minutes
         gmail_token: Optional token for Gmail API authentication
         gmail_secret: Optional credentials for Gmail API authentication
+        include_read: Whether to include already read emails (default: False)
+        skip_filters: Skip thread and sender filtering (return all messages, default: False)
         
     Yields:
         Dict objects containing processed email information
@@ -185,7 +189,26 @@ def fetch_group_emails(
         after = int((datetime.now() - timedelta(minutes=minutes_since)).timestamp())
         
         # Construct Gmail search query
+        # This query searches for:
+        # - Emails sent to or from the specified address
+        # - Emails after the specified timestamp
+        # - Including emails from all categories (inbox, updates, promotions, etc.)
+        
+        # Base query with time filter
         query = f"(to:{email_address} OR from:{email_address}) after:{after}"
+        
+        # Only include unread emails unless include_read is True
+        if not include_read:
+            query += " is:unread"
+        else:
+            logger.info("Including read emails in search")
+            
+        # Log the final query for debugging
+        logger.info(f"Gmail search query: {query}")
+            
+        # Additional filter options (commented out by default)
+        # If you want to include emails from specific categories, use:
+        # query += " category:(primary OR updates OR promotions)"
         
         # Retrieve all matching messages (handling pagination)
         messages = []
@@ -200,9 +223,15 @@ def fetch_group_emails(
                 .execute()
             )
             if "messages" in results:
-                messages.extend(results["messages"])
+                new_messages = results["messages"]
+                messages.extend(new_messages)
+                logger.info(f"Found {len(new_messages)} messages in this page")
+            else:
+                logger.info("No messages found in this page")
+                
             nextPageToken = results.get("nextPageToken")
             if not nextPageToken:
+                logger.info(f"Total messages found: {len(messages)}")
                 break
 
         # Process each message
@@ -243,8 +272,21 @@ def fetch_group_emails(
                     }
                     continue
                     
-                # Only process messages that are the latest in their thread and not from the user
-                if email_address not in from_header and message["id"] == last_message["id"]:
+                # Check if this is a message we should process
+                is_from_user = email_address in from_header
+                is_latest_in_thread = message["id"] == last_message["id"]
+                
+                # Determine if we should process this message
+                should_process = (not is_from_user and is_latest_in_thread) or skip_filters
+                
+                if not should_process:
+                    if is_from_user:
+                        logger.debug(f"Skipping message {message['id']}: sent by the user")
+                    elif not is_latest_in_thread:
+                        logger.debug(f"Skipping message {message['id']}: not the latest in thread")
+                
+                # Process the message if it passes our filters (or if filters are skipped)
+                if should_process:
                     # Extract email metadata from headers
                     subject = next(
                         header["value"] for header in headers if header["name"] == "Subject"
@@ -293,7 +335,7 @@ def fetch_group_emails(
             except Exception as e:
                 logger.warning(f"Failed to process message {message['id']}: {str(e)}")
 
-        logger.info(f"Found {count} emails to process.")
+        logger.info(f"Found {count} emails to process out of {len(messages)} total messages.")
     
     except Exception as e:
         logger.error(f"Error accessing Gmail API: {str(e)}")
