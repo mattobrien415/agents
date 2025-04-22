@@ -1,7 +1,4 @@
 from typing import Literal
-from datetime import datetime
-
-from pydantic import BaseModel
 
 from langchain.chat_models import init_chat_model
 
@@ -19,11 +16,11 @@ tools = get_tools()
 tools_by_name = get_tools_by_name(tools)
 
 # Initialize the LLM for use with router / structured output
-llm = init_chat_model("openai:gpt-4o", temperature=0.0)
+llm = init_chat_model("openai:gpt-4.1", temperature=0.0)
 llm_router = llm.with_structured_output(RouterSchema) 
 
 # Initialize the LLM, enforcing tool use (of any available tools) for agent
-llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
+llm = init_chat_model("openai:gpt-4.1", tool_choice="required", temperature=0.0)
 llm_with_tools = llm.bind_tools(tools)
 
 # Nodes
