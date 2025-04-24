@@ -245,8 +245,32 @@ def fetch_group_emails(
                 headers = payload.get("headers", [])
                 
                 # Get thread details to determine conversation context
+                # Directly fetch the complete thread without any format restriction
+                # This matches the exact approach in the test code that successfully gets all messages
                 thread = service.users().threads().get(userId="me", id=thread_id).execute()
                 messages_in_thread = thread["messages"]
+                logger.info(f"Retrieved thread {thread_id} with {len(messages_in_thread)} messages")
+                
+                # Sort messages by internalDate to ensure proper chronological ordering
+                # This ensures we correctly identify the latest message
+                if all("internalDate" in msg for msg in messages_in_thread):
+                    messages_in_thread.sort(key=lambda m: int(m.get("internalDate", 0)))
+                    logger.info(f"Sorted {len(messages_in_thread)} messages by internalDate")
+                else:
+                    # Fallback to ID-based sorting if internalDate is missing
+                    messages_in_thread.sort(key=lambda m: m["id"])
+                    logger.info(f"Sorted {len(messages_in_thread)} messages by ID (internalDate missing)")
+                
+                # Log details about the messages in the thread for debugging
+                for idx, msg in enumerate(messages_in_thread):
+                    headers = msg["payload"]["headers"]
+                    subject = next((h["value"] for h in headers if h["name"] == "Subject"), "No Subject")
+                    from_email = next((h["value"] for h in headers if h["name"] == "From"), "Unknown")
+                    date = next((h["value"] for h in headers if h["name"] == "Date"), "Unknown")
+                    logger.info(f"  Message {idx+1}/{len(messages_in_thread)}: ID={msg['id']}, Date={date}, From={from_email}")
+                
+                # Log thread information for debugging
+                logger.info(f"Thread {thread_id} has {len(messages_in_thread)} messages")
                 
                 # Analyze the last message in the thread to determine if we need to process it
                 last_message = messages_in_thread[-1]
@@ -276,8 +300,10 @@ def fetch_group_emails(
                 is_from_user = email_address in from_header
                 is_latest_in_thread = message["id"] == last_message["id"]
                 
-                # Determine if we should process this message
-                should_process = (not is_from_user and is_latest_in_thread) or skip_filters
+                # Modified logic for skip_filters:
+                # 1. When skip_filters is True, process all messages regardless of position in thread
+                # 2. When skip_filters is False, only process if it's not from user AND is latest in thread
+                should_process = skip_filters or (not is_from_user and is_latest_in_thread)
                 
                 if not should_process:
                     if is_from_user:
@@ -287,16 +313,36 @@ def fetch_group_emails(
                 
                 # Process the message if it passes our filters (or if filters are skipped)
                 if should_process:
+                    # Log detailed information about this message
+                    logger.info(f"Processing message {message['id']} from thread {thread_id}")
+                    logger.info(f"  Is latest in thread: {is_latest_in_thread}")
+                    logger.info(f"  Skip filters enabled: {skip_filters}")
+                    
+                    # If the user wants to process the latest message in the thread,
+                    # use the last_message from the thread API call instead of the original message
+                    # that matched the search query
+                    if not skip_filters:
+                        # Use original message if skip_filters is False
+                        process_message = message
+                        process_payload = payload
+                        process_headers = headers
+                    else:
+                        # Use the latest message in the thread if skip_filters is True
+                        process_message = last_message
+                        process_payload = last_message["payload"]
+                        process_headers = process_payload.get("headers", [])
+                        logger.info(f"Using latest message in thread: {process_message['id']}")
+                    
                     # Extract email metadata from headers
                     subject = next(
-                        header["value"] for header in headers if header["name"] == "Subject"
+                        header["value"] for header in process_headers if header["name"] == "Subject"
                     )
                     from_email = next(
-                        (header["value"] for header in headers if header["name"] == "From"),
+                        (header["value"] for header in process_headers if header["name"] == "From"),
                         "",
                     ).strip()
                     _to_email = next(
-                        (header["value"] for header in headers if header["name"] == "To"),
+                        (header["value"] for header in process_headers if header["name"] == "To"),
                         "",
                     ).strip()
                     
@@ -304,7 +350,7 @@ def fetch_group_emails(
                     if reply_to := next(
                         (
                             header["value"]
-                            for header in headers
+                            for header in process_headers
                             if header["name"] == "Reply-To"
                         ),
                         "",
@@ -313,12 +359,12 @@ def fetch_group_emails(
                         
                     # Extract and parse email timestamp
                     send_time = next(
-                        header["value"] for header in headers if header["name"] == "Date"
+                        header["value"] for header in process_headers if header["name"] == "Date"
                     )
                     parsed_time = parse_time(send_time)
                     
                     # Extract email body content
-                    body = extract_message_part(payload)
+                    body = extract_message_part(process_payload)
                     
                     # Yield the processed email data
                     yield {
@@ -326,8 +372,8 @@ def fetch_group_emails(
                         "to_email": _to_email,
                         "subject": subject,
                         "page_content": body,
-                        "id": message["id"],
-                        "thread_id": message["threadId"],
+                        "id": process_message["id"],
+                        "thread_id": process_message["threadId"],
                         "send_time": parsed_time.isoformat(),
                     }
                     count += 1
