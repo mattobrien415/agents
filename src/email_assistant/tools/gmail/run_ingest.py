@@ -147,7 +147,7 @@ async def process_emails(args):
                 
         except Exception:
             logger.error("\nPlease start the LangGraph server by running the following command in a separate terminal:")
-            logger.error("  cd /Users/rlm/Desktop/Code/interrupt_workshop && langgraph start")
+            logger.error("  cd /Users/rlm/Desktop/Code/interrupt_workshop && langgraph dev")
             logger.error("\nOr to run with mock responses instead, use the --mock flag:")
             logger.error(f"  python src/email_assistant/tools/gmail/run_ingest.py --email {args.email} --mock\n")
             return 1

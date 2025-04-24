@@ -14,6 +14,7 @@ This directory contains tools for integrating with Gmail and Google Calendar API
 ### 1. Set up Google Cloud Project and Enable Gmail API
 
 1. Enable the Gmail API by clicking the blue "Enable API" button [here](https://developers.google.com/gmail/api/quickstart/python#enable_the_api)
+2. Authorize credentials for a desktop application [here](https://developers.google.com/workspace/gmail/api/quickstart/python#authorize_credentials_for_a_desktop_application)
 2. Configure the OAuth consent screen:
    - If you're using a personal email (non-Google Workspace), select "External" as the User Type
    - Add your email as a test user under "OAuth consent screen" > "Test users" to avoid the "App has not completed verification" error
