@@ -100,10 +100,172 @@ python src/email_assistant/tools/gmail/run_ingest.py --minutes-since 1000 --reru
   - Try running with all options to process everything: `--include-read --skip-filters --minutes-since 1000`
   - Use the `--mock` flag to test the system with simulated emails
 
+## How Gmail Ingestion Works
+
+The Gmail ingestion process works in three main stages:
+
+### 1. CLI Parameters → Gmail Search Query
+
+CLI parameters are translated into a Gmail search query:
+
+- `--minutes-since 1440` → `after:TIMESTAMP` (emails from the last 24 hours)
+- `--email you@example.com` → `to:you@example.com OR from:you@example.com` (emails where you're sender or recipient)
+- `--include-read` → removes `is:unread` filter (includes read messages)
+
+For example, running:
+```
+python run_ingest.py --email you@example.com --minutes-since 1440 --include-read
+```
+
+Creates a Gmail API search query like:
+```
+(to:you@example.com OR from:you@example.com) after:1745432245
+```
+
+### 2. Search Results → Thread Processing
+
+For each message returned by the search:
+
+1. The script obtains the thread ID
+2. Using this thread ID, it fetches the **complete thread** with all messages
+3. Messages in the thread are sorted by date to identify the latest message
+4. Depending on filtering options, it processes either:
+   - The specific message found in the search (default behavior)
+   - The latest message in the thread (when using `--skip-filters`)
+
+### 3. Default Filters and `--skip-filters` Behavior
+
+#### Default Filters Applied
+
+Without `--skip-filters`, the system applies these three filters in sequence:
+
+1. **Unread Filter** (controlled by `--include-read`):
+   - Default behavior: Only processes unread messages 
+   - With `--include-read`: Processes both read and unread messages
+   - Implementation: Adds `is:unread` to the Gmail search query
+   - This filter happens at the search level before any messages are retrieved
+
+2. **Sender Filter**:
+   - Default behavior: Skips messages sent by your own email address
+   - Implementation: Checks if your email appears in the "From" header
+   - Logic: `is_from_user = email_address in from_header`
+   - This prevents the assistant from responding to your own emails
+
+3. **Thread-Position Filter**:
+   - Default behavior: Only processes the most recent message in each thread
+   - Implementation: Compares message ID with the last message in thread
+   - Logic: `is_latest_in_thread = message["id"] == last_message["id"]`
+   - Prevents processing older messages when a newer reply exists
+   
+The combination of these filters means only the latest message in each thread that was not sent by you and is unread (unless `--include-read` is specified) will be processed.
+
+#### Effect of `--skip-filters` Flag
+
+When `--skip-filters` is enabled:
+
+1. **Bypasses Sender and Thread-Position Filters**:
+   - Messages sent by you will be processed
+   - Messages that aren't the latest in thread will be processed
+   - Logic: `should_process = skip_filters or (not is_from_user and is_latest_in_thread)`
+
+2. **Changes Which Message Is Processed**:
+   - Without `--skip-filters`: Uses the specific message found by search
+   - With `--skip-filters`: Always uses the latest message in the thread
+   - Even if the latest message wasn't found in the search results
+
+3. **Unread Filter Still Applies (unless overridden)**:
+   - `--skip-filters` does NOT bypass the unread filter
+   - To process read messages, you must still use `--include-read`
+   - This is because the unread filter happens at the search level
+
+In summary:
+- Default: Process only unread messages where you're not the sender and that are the latest in their thread
+- `--skip-filters`: Process all messages found by search, using the latest message in each thread
+- `--include-read`: Include read messages in the search
+- `--include-read --skip-filters`: Most comprehensive, processes the latest message in all threads found by search
+
+## Important Gmail API Limitations
+
+The Gmail API has several limitations that affect email ingestion:
+
+1. **Search-Based API**: Gmail doesn't provide a direct "get all emails from timeframe" endpoint
+   - All email retrieval relies on Gmail's search functionality
+   - Search results can be delayed for very recent messages (indexing lag)
+   - Search results might not include all messages that technically match criteria
+
+2. **Two-Stage Retrieval Process**:
+   - Initial search to find relevant message IDs
+   - Secondary thread retrieval to get complete conversations
+   - This two-stage process is necessary because search doesn't guarantee complete thread information
+
+## When to Use `--skip-filters`
+
+### Use `--skip-filters` When:
+
+- **Latest Messages Are Missing**: The thread contains newer messages that aren't being processed
+- **Complete Thread Context Needed**: You want to ensure you have the most up-to-date conversation context
+- **Debugging Thread Issues**: You need to see which messages exist in threads vs. which are being processed
+- **Initial Data Loading**: You're populating the system with existing conversations
+- **Inconsistent Results**: You notice some messages are being skipped or processed out of order
+
+### When NOT to Use `--skip-filters`:
+
+- **Day-to-Day Operation**: For routine email processing, the default filters provide a natural workflow
+- **Avoiding Duplicates**: To prevent reprocessing messages that have already been handled
+- **Targeting Specific Messages**: When you want to process exactly the messages that match your search criteria
+- **Processing Only New Correspondence**: When you want to handle only new, unread messages directed to you
+
+### Behavior With `--skip-filters` Enabled:
+
+1. The system still uses search to find relevant thread IDs
+2. For each thread found, it fetches ALL messages in that thread
+3. It sorts all messages by timestamp to identify the truly latest message
+4. It processes the latest message in each thread, even if:
+   - That message wasn't in the original search results
+   - That message was sent by you
+   - That message isn't the latest in the original search results
+
+This ensures you're always working with the most current state of each conversation.
+
+## Known Limitations and Troubleshooting
+
+- **Indexing Delays**: The Gmail API's search might miss very recent messages (added in the last few minutes)
+- **Inconsistent Threading**: Gmail's thread IDs are consistent within a session but might change across API calls
+- **Message Visibility**: Some messages might be excluded due to Gmail's categorization (Promotions, Updates, etc.)
+- **Rate Limits**: The Gmail API has rate limits that could affect processing of large email volumes
+
+If messages appear to be missing:
+- Use a larger `--minutes-since` value to cast a wider time net
+- Enable `--include-read` to include messages you've already read
+- Enable `--skip-filters` to process the latest message in each thread
+- Try the combination: `--minutes-since 1440 --include-read --skip-filters`
+
 - **Connection errors:** If you get "Connection refused" or "All connection attempts failed" errors:
   - Make sure the LangGraph server is running with `langgraph start` in a separate terminal
   - Verify the port number matches in your script (default is 2024)
   - Use the `--mock` flag to test without a LangGraph server: `--mock`
+
+## Recent Updates and Fixes
+
+The Gmail integration has been updated to fix several issues related to thread handling:
+
+1. **Improved Thread Processing**: Now properly retrieves all messages in a thread, not just the ones found by search
+   - Added comprehensive logging of thread messages with dates and senders
+   - Fixed sorting to ensure the truly latest message is identified
+
+2. **Enhanced `--skip-filters` Behavior**: When enabled, the system now:
+   - Processes the absolute latest message in the thread, even if it wasn't found in search
+   - Uses thread-based retrieval to bypass Gmail search limitations
+   - Shows detailed information about which messages are being processed
+
+3. **Thread ID Handling**: Improved how thread IDs are mapped between Gmail and LangGraph
+   - Uses UUID v5 with namespace to ensure consistent ID generation
+   - Better error handling for thread ID mapping issues
+
+4. **Detailed Logging**: Added comprehensive logging to help debug threading issues
+   - Logs number of messages in each thread
+   - Shows which message from a thread is being processed
+   - Displays from/to/subject/date information for selected messages
 
 - **Authentication issues:** If you encounter a "Token has been expired or revoked" error, delete the existing `token.json` file and run the setup script again to generate a fresh token.
 

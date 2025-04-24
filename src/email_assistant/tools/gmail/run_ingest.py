@@ -164,10 +164,16 @@ async def process_emails(args):
             include_read=args.include_read,
             skip_filters=args.skip_filters
         ):
-            # Generate a consistent thread ID using MD5 hash
+            # Convert Gmail thread ID to a consistent UUID format compatible with LangGraph
+            # We need to hash it for LangGraph compatibility but ensure consistency
+            # Use a deterministic method to convert the Gmail thread ID to a valid UUID
+            raw_thread_id = email["thread_id"]
+            # Create a consistent UUID by using the Gmail thread ID as a namespace
+            # This ensures that the same Gmail thread_id always maps to the same UUID
             thread_id = str(
-                uuid.UUID(hex=hashlib.md5(email["thread_id"].encode("UTF-8")).hexdigest())
+                uuid.uuid5(uuid.NAMESPACE_URL, f"gmail:thread:{raw_thread_id}")
             )
+            logger.info(f"Gmail thread ID: {raw_thread_id} → LangGraph thread ID: {thread_id}")
             
             # Different handling depending on whether we're using SDK or direct REST API
             if api_mode:
@@ -248,6 +254,7 @@ async def process_emails(args):
                         thread_info = await client.threads.create(thread_id=thread_id)
                     else:
                         logger.error(f"HTTP error: {str(e)}")
+                        logger.error(f"This may be due to an invalid thread ID format. Raw Gmail thread ID: {email['thread_id']}")
                         raise e
                         
                 # If the user already responded to this email, mark thread as complete and skip
@@ -265,6 +272,12 @@ async def process_emails(args):
                     elif not args.rerun:
                         logger.info(f"Already processed email {email['id']}, skipping")
                         continue
+                
+                # Log thread diagnostics
+                logger.info(f"Thread metadata: {thread_info['metadata']}")
+                logger.info(f"Processing email with ID {email['id']} from {email['from_email']}")
+                logger.info(f"Email subject: {email['subject']}")
+                logger.info(f"Email date: {email.get('send_time', 'unknown')}")
                         
                 # Update thread metadata with current email ID
                 await client.threads.update(thread_id, metadata={"email_id": email["id"]})
