@@ -1,3 +1,4 @@
+import os
 from typing import Literal
 from pydantic import BaseModel
 
@@ -294,16 +295,13 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
 
 def llm_call(state: State, store: BaseStore):
     """LLM decides whether to call a tool or not"""
-
+    
     # Search for existing cal_preferences memory
     cal_preferences = get_memory(store, ("email_assistant", "cal_preferences"), default_cal_preferences)
     
     # Search for existing response_preferences memory
     response_preferences = get_memory(store, ("email_assistant", "response_preferences"), default_response_preferences)
 
-    # Search for existing background memory
-    # TODO: Here, semantic search over a facts collection of background information from emails could be added. 
-    # background = get_memory(store, ("email_assistant", "background"), default_background)
     return {
         "messages": [
             llm_with_tools.invoke(
@@ -525,11 +523,6 @@ def interrupt_handler(state: State, store: BaseStore) -> Command[Literal["llm_ca
             elif tool_call["name"] == "Question":
                 # Don't execute the tool, and add a message with the user feedback to incorporate into the email
                 result.append({"role": "tool", "content": f"User answered the question, which can we can use for any follow up actions. Feedback: {user_feedback}", "tool_call_id": tool_call["id"]})
-                # TODO: Here, we could update the background information with the user's answer. 
-                # update_memory(store, ("email_assistant", "background"), [{
-                #     "role": "user",
-                #     "content": f"Update background information based upon these messages:"
-                # }] + state["messages"] + result)
 
             else:
                 raise ValueError(f"Invalid tool call: {tool_call['name']}")
