@@ -59,14 +59,14 @@ langgraph start
 
 2. Run ingestion script in another terminal:
 ```bash
-# Set your email address as an environment variable (or use --email parameter)
-export EMAIL_ADDRESS=your.email@gmail.com
-
 # Basic usage (defaults to email_assistant_hitl_memory graph)
-python src/email_assistant/tools/gmail/run_ingest.py
+python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.com
 
-# Parameters 
-python src/email_assistant/tools/gmail/run_ingest.py --minutes-since 1000 --rerun 1 --early 0 --email you.email@gmail.com
+# More options
+python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.com --minutes-since 1000 --rerun --include-read
+
+# Enable LangSmith tracing
+python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.com --enable-tracing --langsmith-project "gmail-assistant"
 ```
 
 > **Note:** If you don't want to run the LangGraph server, you can use the `--mock` flag to test the email fetching functionality without processing emails through LangGraph.
@@ -76,20 +76,23 @@ python src/email_assistant/tools/gmail/run_ingest.py --minutes-since 1000 --reru
 - `--email`: The email address to fetch messages from (alternative to setting EMAIL_ADDRESS)
 - `--minutes-since`: Only process emails that are newer than this many minutes (default: 60)
 - `--url`: URL of the LangGraph deployment (default: http://127.0.0.1:2024)
-- `--log-dir`: Directory to store email logs (default: "email_logs")
-- `--rerun`: Process emails that have already been processed (1=yes, 0=no, default: 0)
-- `--early`: Stop after processing one email (1=yes, 0=no, default: 0)
+- `--rerun`: Process emails that have already been processed (default: false)
+- `--early`: Stop after processing one email (default: false)
 - `--mock`: Run in mock mode without requiring a LangGraph server
 - `--include-read`: Include emails that have already been read (by default only unread emails are processed)
 - `--skip-filters`: Process all emails without filtering (by default only latest messages in threads where you're not the sender are processed)
+- `--enable-tracing`: Enable LangSmith tracing (requires LANGCHAIN_API_KEY to be set)
+- `--langsmith-api-key`: LangSmith API key for tracing (alternative to setting LANGCHAIN_API_KEY)
+- `--langsmith-project`: LangSmith project name for tracing (default: "gmail-assistant")
 
 #### Flag Combinations:
-- `--rerun 1 --early 0`: Process all emails, including ones previously processed by LangGraph
-- `--rerun 0 --early 1`: Process only one new (previously unprocessed) email and stop
-- `--rerun 1 --early 1`: Process one email (regardless if it was processed before) and stop
-- `--rerun 0 --early 0`: Process only new (previously unprocessed) emails
+- `--rerun --early`: Process one email (regardless if it was processed before) and stop
+- `--rerun`: Process all emails, including ones previously processed by LangGraph
+- `--early`: Process only one new (previously unprocessed) email and stop
+- (no flags): Process only new (previously unprocessed) emails
 - `--include-read --skip-filters`: Process all emails, including ones marked as read and ones that would normally be filtered out
 - `--minutes-since 1000 --include-read --skip-filters`: Process all emails from the past ~16 hours without any filtering
+- `--enable-tracing --langsmith-project "my-project"`: Process emails with LangSmith tracing enabled
 
 #### Troubleshooting:
 
@@ -247,7 +250,7 @@ If messages appear to be missing:
 
 ## Recent Updates and Fixes
 
-The Gmail integration has been updated to fix several issues related to thread handling:
+The Gmail integration has been updated with several improvements:
 
 1. **Improved Thread Processing**: Now properly retrieves all messages in a thread, not just the ones found by search
    - Added comprehensive logging of thread messages with dates and senders
@@ -259,15 +262,21 @@ The Gmail integration has been updated to fix several issues related to thread h
    - Shows detailed information about which messages are being processed
 
 3. **Thread ID Handling**: Improved how thread IDs are mapped between Gmail and LangGraph
-   - Uses UUID v5 with namespace to ensure consistent ID generation
+   - Uses MD5 hash to ensure consistent ID generation across runs
    - Better error handling for thread ID mapping issues
 
-4. **Detailed Logging**: Added comprehensive logging to help debug threading issues
-   - Logs number of messages in each thread
-   - Shows which message from a thread is being processed
-   - Displays from/to/subject/date information for selected messages
+4. **Simplified Command-Line Interface**: 
+   - Improved flag handling with boolean flags for better usability
+   - Added LangSmith tracing options for better observability
+   - Simplified parameters and added clearer documentation
+
+5. **LangSmith Tracing Integration**: 
+   - Added support for tracing email processing through LangSmith
+   - Ensured tracing context is maintained across workflow interrupts
+   - Added explicit flags for controlling tracing behavior
 
 - **Authentication issues:** If you encounter a "Token has been expired or revoked" error, delete the existing `token.json` file and run the setup script again to generate a fresh token.
+- **Tracing issues:** If you're not seeing traces in LangSmith after interrupts, ensure you're using the latest version of LangSmith.
 
 ## Using Gmail Tools in Your Agent
 

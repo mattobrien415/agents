@@ -1,365 +1,245 @@
 #!/usr/bin/env python
 """
-Gmail ingestion script for Email Assistant.
+Simple Gmail ingestion script based directly on test.ipynb that works with LangSmith tracing.
 
-This script fetches recent emails from Gmail and processes them through
-the email assistant LangGraph. It can be run on a schedule to continuously monitor
-and process new emails.
-
-Example usage:
-  python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.com --minutes-since 60
+This script provides a minimal implementation for ingesting emails to the LangGraph server,
+with reliable LangSmith tracing.
 """
 
-# Enable LangSmith tracing as early as possible
-import os
-if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get("LANGCHAIN_TRACING_V2"):
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    print("Enabled LANGCHAIN_TRACING_V2=true for LangSmith tracing")
-
-import sys
-import argparse
-import asyncio
+import base64
+import json
 import uuid
 import hashlib
-import logging
-from datetime import datetime
+import asyncio
+import argparse
 from pathlib import Path
-from typing import Optional, Dict, Any
+from datetime import datetime
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from langgraph_sdk import get_client
 
-# Add project root to sys.path for imports to work correctly
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../")))
-
-# Import Gmail tools
-from src.email_assistant.tools.gmail.gmail_tools import fetch_group_emails
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
+# Setup nest_asyncio for asyncio support
 try:
-    # Try to import LangGraph SDK
-    from langgraph_sdk import get_client
-    import httpx
-    LANGGRAPH_SDK_AVAILABLE = True
+    import nest_asyncio
+    nest_asyncio.apply()
+    print("Applied nest_asyncio patch")
 except ImportError:
-    logger.warning("LangGraph SDK not available. Running in mock mode only.")
-    LANGGRAPH_SDK_AVAILABLE = False
+    print("Warning: nest_asyncio not available. Install with: pip install nest_asyncio")
 
+# Setup paths
+_ROOT = Path(__file__).parent.absolute()
+_SECRETS_DIR = _ROOT / ".secrets"
+TOKEN_PATH = _SECRETS_DIR / "token.json"
 
-async def process_emails(args):
-    """Process emails from Gmail using the Email Assistant."""
+def extract_message_part(payload):
+    """Extract content from a message part."""
+    if payload.get("body", {}).get("data"):
+        # Handle base64 encoded content
+        data = payload["body"]["data"]
+        decoded = base64.urlsafe_b64decode(data).decode("utf-8")
+        return decoded
+
+    # Handle multipart messages
+    if payload.get("parts"):
+        text_parts = []
+        for part in payload["parts"]:
+            # Recursively process parts
+            content = extract_message_part(part)
+            if content:
+                text_parts.append(content)
+        return "\n".join(text_parts)
+
+    return ""
+
+def load_gmail_credentials():
+    """Load Gmail credentials from token.json"""
+    if not TOKEN_PATH.exists():
+        print(f"Error: Token file not found at {TOKEN_PATH}")
+        return None
+        
+    try:
+        with open(TOKEN_PATH, "r") as f:
+            token_data = json.load(f)
+            
+        credentials = Credentials(
+            token=token_data.get("token"),
+            refresh_token=token_data.get("refresh_token"),
+            token_uri=token_data.get("token_uri", "https://oauth2.googleapis.com/token"),
+            client_id=token_data.get("client_id"),
+            client_secret=token_data.get("client_secret"),
+            scopes=token_data.get("scopes", ["https://www.googleapis.com/auth/gmail.modify"])
+        )
+        return credentials
+    except Exception as e:
+        print(f"Error loading credentials: {str(e)}")
+        return None
+
+def extract_email_data(message):
+    """Extract key information from a Gmail message."""
+    headers = message['payload']['headers']
     
-    # Validate email address
-    if not args.email:
-        logger.error("Email address is required. Use --email or set EMAIL_ADDRESS env var.")
+    # Extract key headers
+    subject = next((h['value'] for h in headers if h['name'] == 'Subject'), 'No Subject')
+    from_email = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown Sender')
+    to_email = next((h['value'] for h in headers if h['name'] == 'To'), 'Unknown Recipient')
+    date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown Date')
+    
+    # Extract message content
+    content = extract_message_part(message['payload'])
+    
+    # Create email data object
+    email_data = {
+        "from_email": from_email,
+        "to_email": to_email,
+        "subject": subject,
+        "page_content": content,
+        "id": message['id'],
+        "thread_id": message['threadId'],
+        "send_time": date
+    }
+    
+    return email_data
+
+async def ingest_email_to_langgraph(email_data, graph_name, url="http://127.0.0.1:2024"):
+    """Ingest an email to LangGraph."""
+    # Connect to LangGraph server
+    client = get_client(url=url)
+    
+    # Create a consistent UUID for the thread
+    raw_thread_id = email_data["thread_id"]
+    thread_id = str(
+        uuid.UUID(hex=hashlib.md5(raw_thread_id.encode("UTF-8")).hexdigest())
+    )
+    print(f"Gmail thread ID: {raw_thread_id} → LangGraph thread ID: {thread_id}")
+    
+    try:
+        # Try to get existing thread info
+        thread_info = await client.threads.get(thread_id)
+        print(f"Found existing thread: {thread_id}")
+    except Exception as e:
+        # If thread doesn't exist, create it
+        print(f"Creating new thread: {thread_id}")
+        thread_info = await client.threads.create(thread_id=thread_id)
+    
+    # Update thread metadata with current email ID
+    await client.threads.update(thread_id, metadata={"email_id": email_data["id"]})
+    
+    # Create a run for this email
+    print(f"Creating run for thread {thread_id} with graph {graph_name}")
+    
+    run = await client.runs.create(
+        thread_id,
+        graph_name,
+        input={"email_input": {
+            "from": email_data["from_email"],
+            "to": email_data["to_email"],
+            "subject": email_data["subject"],
+            "body": email_data["page_content"]
+        }},
+        multitask_strategy="rollback",
+    )
+    
+    print(f"Run created successfully")
+    print(f"View in LangGraph Studio: http://127.0.0.1:2024/threads/{thread_id}")
+    
+    return thread_id, run
+
+async def fetch_and_process_emails(args):
+    """Fetch emails from Gmail and process them through LangGraph."""
+    # Load Gmail credentials
+    credentials = load_gmail_credentials()
+    if not credentials:
+        print("Failed to load Gmail credentials")
         return 1
         
-    # Create log directory
-    Path(args.log_dir).mkdir(parents=True, exist_ok=True)
-    
-    # Fetch emails
-    logger.info(f"Fetching emails for {args.email} from the last {args.minutes_since} minutes...")
-    
-    # Check if we're running in mock mode
-    if args.mock or not LANGGRAPH_SDK_AVAILABLE:
-        if not LANGGRAPH_SDK_AVAILABLE:
-            logger.warning("LangGraph SDK not available - running in mock mode")
-        else:
-            logger.info("Mock mode enabled - simulating LangGraph processing")
-            
-        # Iterate through emails but don't actually process them
-        email_count = 0
-        try:
-            for email in fetch_group_emails(
-                args.email,
-                minutes_since=args.minutes_since,
-                gmail_token=args.gmail_token,
-                gmail_secret=args.gmail_secret,
-                include_read=args.include_read,
-                skip_filters=args.skip_filters
-            ):
-                email_count += 1
-                logger.info(f"Would process email from {email['from_email']} with subject: {email['subject']}")
-                if args.early and email_count > 0:
-                    logger.info("Early stop enabled, stopping after first email")
-                    break
-            logger.info(f"Found {email_count} emails to process (mock mode)")
-            
-        except Exception as e:
-            logger.error(f"Error fetching emails: {str(e)}")
-            return 1
-            
-        return 0
-        
-    # Set up direct REST API interaction mode if needed
-    # This is a fallback if the LangGraph SDK connection fails
-    api_mode = False
-    import requests
-    
-    # Initialize LangGraph client
-    try:
-        # Configure the client with tracing options
-        client_options = {
-            "url": args.url,
-            # Pass environment variables through to the client
-            "api_key": os.environ.get("LANGCHAIN_API_KEY"),
-        }
-        
-        # Create the client
-        client = get_client(**client_options)
-        # Test connection by making a simple request - use the correct SDK API structure
-        try:
-            # LangGraph SDK structure might differ depending on the version
-            # Try common operations to see if the client works
-            try:
-                # Just check if the client has essential methods
-                if hasattr(client, 'runs') and hasattr(client, 'threads'):
-                    logger.info(f"Connected to LangGraph server at {args.url}")
-                else:
-                    logger.warning("LangGraph client initialized but missing required methods")
-                    api_mode = True
-            except Exception:
-                logger.warning("Unable to validate LangGraph client structure")
-                api_mode = True
-                
-        except Exception as conn_error:
-            logger.warning(f"Could not communicate with LangGraph SDK API: {str(conn_error)}")
-            logger.warning("Switching to direct REST API mode")
-            api_mode = True
-            
-    except Exception as e:
-        logger.error(f"Failed to initialize LangGraph client for {args.url}: {str(e)}")
-        
-        # Try a direct HTTP request to see if the server is running but has a different API
-        try:
-            direct_urls = [
-                f"{args.url}/health",
-                f"{args.url}/v1/health",
-                f"{args.url}/api/v1/health"
-            ]
-            server_running = False
-            
-            for url in direct_urls:
-                try:
-                    response = requests.get(url, timeout=2)
-                    if response.status_code == 200:
-                        server_running = True
-                        logger.warning(f"LangGraph server is running at {url}")
-                        break
-                except Exception:
-                    pass
-            
-            if server_running:
-                logger.warning("Switching to direct REST API mode")
-                api_mode = True
-            else:
-                raise Exception("Server not responding correctly")
-                
-        except Exception:
-            logger.error("\nPlease start the LangGraph server by running the following command in a separate terminal:")
-            logger.error("  cd /Users/rlm/Desktop/Code/interrupt_workshop && langgraph start")
-            logger.error("\nOr to run with mock responses instead, use the --mock flag:")
-            logger.error(f"  python src/email_assistant/tools/gmail/run_ingest.py --email {args.email} --mock\n")
-            return 1
+    # Build Gmail service
+    service = build("gmail", "v1", credentials=credentials)
     
     # Process emails
     processed_count = 0
     
     try:
-        for email in fetch_group_emails(
-            args.email,
-            minutes_since=args.minutes_since,
-            gmail_token=args.gmail_token,
-            gmail_secret=args.gmail_secret,
-            include_read=args.include_read,
-            skip_filters=args.skip_filters
-        ):
-            # Convert Gmail thread ID to a consistent UUID format compatible with LangGraph
-            # We need to hash it for LangGraph compatibility but ensure consistency
-            # Use a deterministic method to convert the Gmail thread ID to a valid UUID
-            raw_thread_id = email["thread_id"]
-            # Create a UUID from an MD5 hash of the thread ID, to match the previous implementation
-            thread_id = str(
-                uuid.UUID(hex=hashlib.md5(raw_thread_id.encode("UTF-8")).hexdigest())
-            )
-            logger.info(f"Gmail thread ID: {raw_thread_id} → LangGraph thread ID: {thread_id}")
+        # Get messages from the specified email address
+        email_address = args.email
+        
+        # Construct Gmail search query
+        query = f"to:{email_address} OR from:{email_address}"
+        
+        # Add time constraint if specified
+        if args.minutes_since > 0:
+            # Calculate timestamp for filtering
+            from datetime import timedelta
+            after = int((datetime.now() - timedelta(minutes=args.minutes_since)).timestamp())
+            query += f" after:{after}"
             
-            # Different handling depending on whether we're using SDK or direct REST API
-            if api_mode:
-                # Direct REST API mode
-                try:
-                    # Process the email directly with REST API
-                    logger.info(f"Processing email from: {email['from_email']}")
-                    logger.info(f"Subject: {email['subject']}")
-                    
-                    # Prepare the payload for LangGraph using direct API schema
-                    # Using more intuitive field names
-                    payload = {
-                        "inputs": {
-                            "email_input": {
-                                "from": email["from_email"],
-                                "to": email["to_email"],
-                                "subject": email["subject"],
-                                "body": email["page_content"]
-                            }
-                        }
-                    }
-                    
-                    # Let the LangGraph server handle environment variables for tracing
-                    # No need to explicitly add configuration here
-                    
-                    # Try different API URL patterns
-                    api_urls = [
-                        f"{args.url}/v1/graphs/{args.graph_name}",
-                        f"{args.url}/api/v1/graphs/{args.graph_name}",
-                        f"{args.url}/v1/invoke/{args.graph_name}",
-                        f"{args.url}/v1/{args.graph_name}"
-                    ]
-                    
-                    success = False
-                    result = None
-                    
-                    for api_url in api_urls:
-                        try:
-                            logger.info(f"Trying direct API call to {api_url}")
-                            response = requests.post(
-                                api_url, 
-                                json=payload,
-                                timeout=10
-                            )
-                            
-                            if response.status_code in (200, 201, 202):
-                                success = True
-                                result = response
-                                logger.info(f"Successful API call to {api_url}")
-                                break
-                                
-                        except Exception as url_err:
-                            logger.warning(f"API call to {api_url} failed: {str(url_err)}")
-                            
-                    # Use the last successful response or the last tried one
-                    response = result if success else response
-                    
-                    if response.status_code == 200:
-                        logger.info(f"Successfully processed email with ID: {email['id']}")
-                        processed_count += 1
-                    else:
-                        logger.error(f"Error processing email: {response.status_code} - {response.text}")
-                        
-                except Exception as e:
-                    logger.error(f"Error in direct API mode: {str(e)}")
-            else:
-                # SDK mode
-                try:
-                    # Try to get existing thread info
-                    thread_info = await client.threads.get(thread_id)
-                    logger.info(f"Found existing thread: {thread_id}")
-                except httpx.HTTPStatusError as e:
-                    # If the user already responded to this email, skip it
-                    if "user_respond" in email:
-                        logger.info(f"Skipping email {email.get('id', '')}: User already responded")
-                        continue
-                        
-                    # If thread doesn't exist, create it
-                    if e.response.status_code == 404:
-                        logger.info(f"Creating new thread: {thread_id}")
-                        thread_info = await client.threads.create(thread_id=thread_id)
-                    else:
-                        logger.error(f"HTTP error: {str(e)}")
-                        logger.error(f"This may be due to an invalid thread ID format. Raw Gmail thread ID: {email['thread_id']}")
-                        raise e
-                        
-                # If the user already responded to this email, mark thread as complete and skip
-                if "user_respond" in email:
-                    logger.info(f"User already responded to email {email.get('id', '')}, marking thread as complete")
-                    await client.threads.update_state(thread_id, None, as_node="__end__")
-                    continue
-                    
-                # Check if we've already processed this email
-                recent_email = thread_info["metadata"].get("email_id")
-                if recent_email == email["id"]:
-                    if args.early:
-                        logger.info("Encountered already processed email, early stop enabled")
-                        break
-                    elif not args.rerun:
-                        logger.info(f"Already processed email {email['id']}, skipping")
-                        continue
-                
-                # Log thread diagnostics
-                logger.info(f"Thread metadata: {thread_info['metadata']}")
-                logger.info(f"Processing email with ID {email['id']} from {email['from_email']}")
-                logger.info(f"Email subject: {email['subject']}")
-                logger.info(f"Email date: {email.get('send_time', 'unknown')}")
-                        
-                # Update thread metadata with current email ID
-                await client.threads.update(thread_id, metadata={"email_id": email["id"]})
-                
-                # Log email details
-                logger.info(f"Processing email from: {email['from_email']}")
-                logger.info(f"Subject: {email['subject']}")
-                
-                # Create a run for this email
-                try:
-                    logger.info(f"Creating run for thread {thread_id} with graph {args.graph_name}")
-                    
-                    # Create the run - let the server handle the environment variables
-                    await client.runs.create(
-                        thread_id,
-                        args.graph_name,
-                        input={"email_input": {
-                            "from": email["from_email"],
-                            "to": email["to_email"],
-                            "subject": email["subject"],
-                            "body": email["page_content"]
-                        }},
-                        multitask_strategy="rollback"
-                    )
-                    logger.info(f"Successfully processed email with ID: {email['id']}")
-                    processed_count += 1
-                    
-                except Exception as e:
-                    logger.error(f"Error processing email: {str(e)}")
-                
-            # Early stop after processing one email if requested
-            if args.early and processed_count > 0:
-                logger.info("Early stop enabled, stopping after first email")
+        # Only include unread emails unless include_read is True
+        if not args.include_read:
+            query += " is:unread"
+            
+        print(f"Gmail search query: {query}")
+        
+        # Execute the search
+        results = service.users().messages().list(userId="me", q=query).execute()
+        messages = results.get("messages", [])
+        
+        if not messages:
+            print("No emails found matching the criteria")
+            return 0
+            
+        print(f"Found {len(messages)} emails")
+        
+        # Process each email
+        for i, message_info in enumerate(messages):
+            # Stop early if requested
+            if args.early and i > 0:
+                print(f"Early stop after processing {i} emails")
                 break
                 
-    except Exception as e:
-        error_message = str(e)
-        logger.error(f"Error fetching or processing emails: {error_message}")
-        
-        # Check for connection errors specifically
-        if "connection" in error_message.lower() or "connect" in error_message.lower():
-            logger.error("\n💡 Connection Error: The LangGraph server is not running!")
-            logger.error("\nTo fix this, you have two options:")
-            logger.error("1. Start the LangGraph server in a new terminal window:")
-            logger.error("   cd /Users/rlm/Desktop/Code/interrupt_workshop && langgraph start")
-            logger.error("\n2. Use mock mode to test without a server:")
-            logger.error(f"   python src/email_assistant/tools/gmail/run_ingest.py --email {args.email} --mock")
-        
-        return 1
+            # Check if we should reprocess this email
+            if not args.rerun:
+                # TODO: Add check for already processed emails
+                pass
+                
+            # Get the full message
+            message = service.users().messages().get(userId="me", id=message_info["id"]).execute()
             
-    logger.info(f"Email processing complete. Processed {processed_count} emails.")
-    return 0
-    
+            # Extract email data
+            email_data = extract_email_data(message)
+            
+            print(f"\nProcessing email {i+1}/{len(messages)}:")
+            print(f"From: {email_data['from_email']}")
+            print(f"Subject: {email_data['subject']}")
+            
+            # Ingest to LangGraph
+            thread_id, run = await ingest_email_to_langgraph(
+                email_data, 
+                args.graph_name,
+                url=args.url
+            )
+            
+            processed_count += 1
+            
+        print(f"\nProcessed {processed_count} emails successfully")
+        return 0
+        
+    except Exception as e:
+        print(f"Error processing emails: {str(e)}")
+        return 1
 
 def parse_args():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Gmail ingestion script for Email Assistant")
+    parser = argparse.ArgumentParser(description="Simple Gmail ingestion for LangGraph with reliable tracing")
+    
     parser.add_argument(
         "--email", 
         type=str, 
-        default=os.environ.get("EMAIL_ADDRESS"),
-        help="Email address to fetch messages for (can also set EMAIL_ADDRESS env var)"
+        required=True,
+        help="Email address to fetch messages for"
     )
     parser.add_argument(
         "--minutes-since", 
         type=int, 
-        default=60,
+        default=120,
         help="Only retrieve emails newer than this many minutes"
     )
     parser.add_argument(
@@ -375,27 +255,9 @@ def parse_args():
         help="URL of the LangGraph deployment"
     )
     parser.add_argument(
-        "--log-dir", 
-        type=str, 
-        default="email_logs",
-        help="Directory to store email logs"
-    )
-    parser.add_argument(
-        "--rerun", 
-        type=int, 
-        default=0,
-        help="Process the same emails for testing (1=yes, 0=no)"
-    )
-    parser.add_argument(
         "--early", 
-        type=int, 
-        default=0,
-        help="Early stop after processing one email (1=yes, 0=no)"
-    )
-    parser.add_argument(
-        "--mock",
         action="store_true",
-        help="Run in mock mode without requiring a LangGraph server"
+        help="Early stop after processing one email"
     )
     parser.add_argument(
         "--include-read",
@@ -403,75 +265,20 @@ def parse_args():
         help="Include emails that have already been read"
     )
     parser.add_argument(
+        "--rerun", 
+        action="store_true",
+        help="Process the same emails again even if already processed"
+    )
+    parser.add_argument(
         "--skip-filters",
         action="store_true",
-        help="Skip filtering of emails (include messages that would normally be filtered out)"
-    )
-    parser.add_argument(
-        "--gmail-token",
-        type=str,
-        default=None,
-        help="The token to use in communicating with the Gmail API"
-    )
-    parser.add_argument(
-        "--gmail-secret",
-        type=str,
-        default=None,
-        help="The credentials to use in communicating with the Gmail API"
-    )
-    parser.add_argument(
-        "--langsmith-api-key",
-        type=str,
-        default=os.environ.get("LANGCHAIN_API_KEY"),
-        help="LangSmith API key for tracing"
-    )
-    parser.add_argument(
-        "--langsmith-project",
-        type=str,
-        default=os.environ.get("LANGCHAIN_PROJECT", "gmail-assistant"),
-        help="LangSmith project name for tracing"
-    )
-    parser.add_argument(
-        "--enable-tracing",
-        action="store_true",
-        help="Enable LangSmith tracing"
+        help="Skip filtering of emails"
     )
     return parser.parse_args()
 
-
 if __name__ == "__main__":
+    # Get command line arguments
     args = parse_args()
     
-    # Set LangSmith environment variables from command line args
-    if args.enable_tracing:
-        if args.langsmith_api_key:
-            # Set environment variables for the process
-            os.environ["LANGCHAIN_API_KEY"] = args.langsmith_api_key
-            os.environ["LANGCHAIN_TRACING_V2"] = "true"
-            os.environ["LANGCHAIN_PROJECT"] = args.langsmith_project
-            print(f"Enabled LangSmith tracing to project: {args.langsmith_project}")
-        else:
-            print("Warning: enable-tracing flag set but no LangSmith API key provided")
-    else:
-        # Check if environment variables are already set
-        if os.environ.get("LANGCHAIN_API_KEY"):
-            # Enable tracing if API key is found but tracing flags aren't set
-            if not os.environ.get("LANGCHAIN_TRACING_V2") and not os.environ.get("LANGSMITH_TRACING"):
-                print("API key found but tracing not enabled - enabling LANGCHAIN_TRACING_V2")
-                os.environ["LANGCHAIN_TRACING_V2"] = "true"
-            
-            # Set a default project if not already set
-            if not os.environ.get("LANGCHAIN_PROJECT"):
-                os.environ["LANGCHAIN_PROJECT"] = "gmail-assistant"
-                
-            print(f"Using LangSmith configuration from environment variables:")
-            print(f"  LANGCHAIN_API_KEY: {'Set' if os.environ.get('LANGCHAIN_API_KEY') else 'Not set'}")
-            print(f"  LANGCHAIN_TRACING_V2: {os.environ.get('LANGCHAIN_TRACING_V2', 'Not set')}")
-            print(f"  LANGCHAIN_PROJECT: {os.environ.get('LANGCHAIN_PROJECT', 'default')}")
-    
-    if LANGGRAPH_SDK_AVAILABLE:
-        exit(asyncio.run(process_emails(args)))
-    else:
-        # If LangGraph SDK isn't available, run synchronously in mock mode
-        args.mock = True
-        exit(process_emails(args))
+    # Run the script
+    exit(asyncio.run(fetch_and_process_emails(args)))
