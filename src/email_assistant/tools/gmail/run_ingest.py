@@ -10,7 +10,12 @@ Example usage:
   python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.com --minutes-since 60
 """
 
+# Enable LangSmith tracing as early as possible
 import os
+if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get("LANGCHAIN_TRACING_V2"):
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
+    print("Enabled LANGCHAIN_TRACING_V2=true for LangSmith tracing")
+
 import sys
 import argparse
 import asyncio
@@ -96,7 +101,15 @@ async def process_emails(args):
     
     # Initialize LangGraph client
     try:
-        client = get_client(url=args.url)
+        # Configure the client with tracing options
+        client_options = {
+            "url": args.url,
+            # Pass environment variables through to the client
+            "api_key": os.environ.get("LANGCHAIN_API_KEY"),
+        }
+        
+        # Create the client
+        client = get_client(**client_options)
         # Test connection by making a simple request - use the correct SDK API structure
         try:
             # LangGraph SDK structure might differ depending on the version
@@ -168,10 +181,9 @@ async def process_emails(args):
             # We need to hash it for LangGraph compatibility but ensure consistency
             # Use a deterministic method to convert the Gmail thread ID to a valid UUID
             raw_thread_id = email["thread_id"]
-            # Create a consistent UUID by using the Gmail thread ID as a namespace
-            # This ensures that the same Gmail thread_id always maps to the same UUID
+            # Create a UUID from an MD5 hash of the thread ID, to match the previous implementation
             thread_id = str(
-                uuid.uuid5(uuid.NAMESPACE_URL, f"gmail:thread:{raw_thread_id}")
+                uuid.UUID(hex=hashlib.md5(raw_thread_id.encode("UTF-8")).hexdigest())
             )
             logger.info(f"Gmail thread ID: {raw_thread_id} → LangGraph thread ID: {thread_id}")
             
@@ -195,6 +207,9 @@ async def process_emails(args):
                             }
                         }
                     }
+                    
+                    # Let the LangGraph server handle environment variables for tracing
+                    # No need to explicitly add configuration here
                     
                     # Try different API URL patterns
                     api_urls = [
@@ -289,6 +304,8 @@ async def process_emails(args):
                 # Create a run for this email
                 try:
                     logger.info(f"Creating run for thread {thread_id} with graph {args.graph_name}")
+                    
+                    # Create the run - let the server handle the environment variables
                     await client.runs.create(
                         thread_id,
                         args.graph_name,
@@ -298,7 +315,7 @@ async def process_emails(args):
                             "subject": email["subject"],
                             "body": email["page_content"]
                         }},
-                        multitask_strategy="rollback",
+                        multitask_strategy="rollback"
                     )
                     logger.info(f"Successfully processed email with ID: {email['id']}")
                     processed_count += 1
@@ -402,11 +419,56 @@ def parse_args():
         default=None,
         help="The credentials to use in communicating with the Gmail API"
     )
+    parser.add_argument(
+        "--langsmith-api-key",
+        type=str,
+        default=os.environ.get("LANGCHAIN_API_KEY"),
+        help="LangSmith API key for tracing"
+    )
+    parser.add_argument(
+        "--langsmith-project",
+        type=str,
+        default=os.environ.get("LANGCHAIN_PROJECT", "gmail-assistant"),
+        help="LangSmith project name for tracing"
+    )
+    parser.add_argument(
+        "--enable-tracing",
+        action="store_true",
+        help="Enable LangSmith tracing"
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    
+    # Set LangSmith environment variables from command line args
+    if args.enable_tracing:
+        if args.langsmith_api_key:
+            # Set environment variables for the process
+            os.environ["LANGCHAIN_API_KEY"] = args.langsmith_api_key
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_PROJECT"] = args.langsmith_project
+            print(f"Enabled LangSmith tracing to project: {args.langsmith_project}")
+        else:
+            print("Warning: enable-tracing flag set but no LangSmith API key provided")
+    else:
+        # Check if environment variables are already set
+        if os.environ.get("LANGCHAIN_API_KEY"):
+            # Enable tracing if API key is found but tracing flags aren't set
+            if not os.environ.get("LANGCHAIN_TRACING_V2") and not os.environ.get("LANGSMITH_TRACING"):
+                print("API key found but tracing not enabled - enabling LANGCHAIN_TRACING_V2")
+                os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            
+            # Set a default project if not already set
+            if not os.environ.get("LANGCHAIN_PROJECT"):
+                os.environ["LANGCHAIN_PROJECT"] = "gmail-assistant"
+                
+            print(f"Using LangSmith configuration from environment variables:")
+            print(f"  LANGCHAIN_API_KEY: {'Set' if os.environ.get('LANGCHAIN_API_KEY') else 'Not set'}")
+            print(f"  LANGCHAIN_TRACING_V2: {os.environ.get('LANGCHAIN_TRACING_V2', 'Not set')}")
+            print(f"  LANGCHAIN_PROJECT: {os.environ.get('LANGCHAIN_PROJECT', 'default')}")
+    
     if LANGGRAPH_SDK_AVAILABLE:
         exit(asyncio.run(process_emails(args)))
     else:

@@ -294,7 +294,7 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
 
 def llm_call(state: State, store: BaseStore):
     """LLM decides whether to call a tool or not"""
-
+    
     # Search for existing cal_preferences memory
     cal_preferences = get_memory(store, ("email_assistant", "cal_preferences"), default_cal_preferences)
     
