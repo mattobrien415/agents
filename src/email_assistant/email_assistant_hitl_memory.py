@@ -1,3 +1,4 @@
+import os
 from typing import Literal
 from pydantic import BaseModel
 
@@ -13,6 +14,16 @@ from src.email_assistant.prompts import triage_system_prompt, triage_user_prompt
 from src.email_assistant.schemas import State, RouterSchema, StateInput
 from src.email_assistant.utils import parse_email, format_for_display, format_email_markdown
 
+# enable debug logging langsmith
+import os
+
+os.environ["LANGSMITH_DISABLE_RUN_COMPRESSION"] = "true"
+import logging
+# Note: this will affect _all_ packages that use python's built-in logging mechanism, 
+#       so may increase your log volume. Pick the right log level for your use case.
+logging.basicConfig(level=logging.WARNING)
+langsmith_logger = logging.getLogger("langsmith")
+langsmith_logger.setLevel(level=5)
 # Get tools
 tools = get_tools(["write_email", "schedule_meeting", "check_calendar_availability", "Question", "Done"])
 tools_by_name = get_tools_by_name(tools)
@@ -326,6 +337,12 @@ def interrupt_handler(state: State, store: BaseStore) -> Command[Literal["llm_ca
     # Store messages
     result = []
 
+    # Log
+    print(f"\n\n\n\nLANGCHAIN API KEY:\n{os.environ.get('LANGCHAIN_API_KEY')}\n\n\n\n")
+    
+    # Hello world
+    print("Hello world")
+
     # Go to the LLM call node next
     goto = "llm_call"
 
@@ -390,6 +407,7 @@ def interrupt_handler(state: State, store: BaseStore) -> Command[Literal["llm_ca
 
         # Send to Agent Inbox and wait for response
         response = interrupt([request])[0]
+        print(f"\n\n\n\nLANGCHAIN API KEY:\n{os.environ.get('LANGCHAIN_API_KEY')}\n\n\n\n")
 
         # Handle the responses 
         if response["type"] == "accept":
