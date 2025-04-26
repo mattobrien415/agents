@@ -158,13 +158,13 @@ def triage_router(state: State, store: BaseStore) -> Command[Literal["triage_int
     """
     
     # Parse the email input
-    author, to, subject, email_thread = parse_email(state["email_input"])
+    author, to, subject, email_thread, email_id = parse_email(state["email_input"])
     user_prompt = triage_user_prompt.format(
         author=author, to=to, subject=subject, email_thread=email_thread
     )
 
     # Create email markdown for Agent Inbox in case of notification  
-    email_markdown = format_email_markdown(subject, author, to, email_thread)
+    email_markdown = format_email_markdown(subject, author, to, email_thread, email_id)
 
     # Search for existing triage_preferences memory
     triage_instructions = get_memory(store, ("email_assistant", "triage_preferences"), default_triage_instructions)
@@ -228,10 +228,10 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
     """Handles interrupts from the triage step"""
     
     # Parse the email input
-    author, to, subject, email_thread = parse_email(state["email_input"])
+    author, to, subject, email_thread, email_id = parse_email(state["email_input"])
 
     # Create email markdown for Agent Inbox in case of notification  
-    email_markdown = format_email_markdown(subject, author, to, email_thread)
+    email_markdown = format_email_markdown(subject, author, to, email_thread, email_id)
 
     # Create messages
     messages = [{"role": "user",
@@ -344,8 +344,8 @@ def interrupt_handler(state: State, store: BaseStore) -> Command[Literal["llm_ca
             
         # Get original email from email_input in state
         email_input = state["email_input"]
-        author, to, subject, email_thread = parse_email(email_input)
-        original_email_markdown = format_email_markdown(subject, author, to, email_thread)
+        author, to, subject, email_thread, email_id = parse_email(email_input)
+        original_email_markdown = format_email_markdown(subject, author, to, email_thread, email_id)
         
         # Format tool call for display and prepend the original email
         tool_display = format_for_display(state, tool_call)

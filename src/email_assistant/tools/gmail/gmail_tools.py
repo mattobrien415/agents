@@ -449,7 +449,7 @@ class SendEmailInput(BaseModel):
     Input schema for the send_email_tool.
     """
     email_id: str = Field(
-        description="Gmail message ID to reply to"
+        description="Gmail message ID to reply to. This must be a valid Gmail message ID obtained from the fetch_emails_tool. If you're creating a new email (not replying), you can use any string like 'NEW_EMAIL'."
     )
     response_text: str = Field(
         description="Content of the reply"
@@ -470,12 +470,13 @@ def send_email(
     addn_receipients: Optional[List[str]] = None
 ) -> bool:
     """
-    Send a reply to an existing email thread.
+    Send a reply to an existing email thread or create a new email.
     
     Args:
-        email_id: Gmail message ID to reply to
-        response_text: Content of the reply
-        email_address: Current user's email address
+        email_id: Gmail message ID to reply to. If this is not a valid Gmail ID (e.g., when creating a new email),
+                 the function will create a new email instead of replying to an existing thread.
+        response_text: Content of the reply or new email
+        email_address: Current user's email address (the sender)
         addn_receipients: Optional additional recipients
         
     Returns:
@@ -491,18 +492,28 @@ def send_email(
         creds = get_credentials()
         service = build("gmail", "v1", credentials=creds)
         
-        # Get the original message to extract headers
-        message = service.users().messages().get(userId="me", id=email_id).execute()
-        headers = message["payload"]["headers"]
-        
-        # Extract subject with Re: prefix if not already present
-        subject = next(header["value"] for header in headers if header["name"] == "Subject")
-        if not subject.startswith("Re:"):
-            subject = f"Re: {subject}"
+        try:
+            # Try to get the original message to extract headers
+            message = service.users().messages().get(userId="me", id=email_id).execute()
+            headers = message["payload"]["headers"]
             
-        # Create a reply message
-        original_from = next(header["value"] for header in headers if header["name"] == "From")
-        
+            # Extract subject with Re: prefix if not already present
+            subject = next(header["value"] for header in headers if header["name"] == "Subject")
+            if not subject.startswith("Re:"):
+                subject = f"Re: {subject}"
+                
+            # Create a reply message
+            original_from = next(header["value"] for header in headers if header["name"] == "From")
+            
+            # Get thread ID from message
+            thread_id = message["threadId"]
+        except Exception as e:
+            logger.warning(f"Could not retrieve original message with ID {email_id}. Error: {str(e)}")
+            # If we can't get the original message, create a new message with minimal info
+            subject = "Response"
+            original_from = "recipient@example.com"  # Will be overridden by user input
+            thread_id = None
+            
         # Create a message object
         msg = MIMEText(response_text)
         msg["to"] = original_from
@@ -513,22 +524,22 @@ def send_email(
         if addn_receipients:
             msg["cc"] = ", ".join(addn_receipients)
             
-        # Add reference to original message for threading
-        thread_id = message["threadId"]
-        
         # Encode the message
         raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
         
+        # Prepare message body
+        body = {"raw": raw}
+        # Only add threadId if it exists
+        if thread_id:
+            body["threadId"] = thread_id
+            
         # Send the message
         sent_message = (
             service.users()
             .messages()
             .send(
                 userId="me",
-                body={
-                    "raw": raw,
-                    "threadId": thread_id,
-                },
+                body=body,
             )
             .execute()
         )
@@ -548,12 +559,13 @@ def send_email_tool(
     additional_recipients: Optional[List[str]] = None
 ) -> str:
     """
-    Send a reply to an existing email thread in Gmail.
+    Send a reply to an existing email thread or create a new email in Gmail.
     
     Args:
-        email_id: Gmail message ID to reply to
-        response_text: Content of the reply
-        email_address: Current user's email address
+        email_id: Gmail message ID to reply to. This should be a valid Gmail message ID obtained from the fetch_emails_tool. 
+                 If creating a new email rather than replying, you can use any string identifier like "NEW_EMAIL".
+        response_text: Content of the reply or new email
+        email_address: Current user's email address (the sender)
         additional_recipients: Optional additional recipients to include
         
     Returns:
