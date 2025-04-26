@@ -22,11 +22,11 @@ This directory contains tools for integrating with Gmail and Google Calendar API
 - Create
 - Under "Audience" select "External" if you're using a personal email (non-Google Workspace)
 
-< add photo of desktop app screenshot here>
+<img width="1496" alt="Screenshot 2025-04-26 at 7 43 57 AM" src="https://github.com/user-attachments/assets/718da39e-9b10-4a2a-905c-eda87c1c1126" />
 
 - Add yourself as a test user
 
-< add photo of test users screenshot here>
+<img width="1622" alt="Screenshot 2025-04-26 at 7 46 32 AM" src="https://github.com/user-attachments/assets/0489ad7e-0acd-4abd-b309-7c97ce705932" />
 
 3. Save the downloaded JSON file
 
