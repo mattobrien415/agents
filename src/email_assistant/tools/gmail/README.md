@@ -14,20 +14,25 @@ This directory contains tools for integrating with Gmail and Google Calendar API
 ### 1. Set up Google Cloud Project and Enable Gmail API
 
 1. Enable the Gmail API by clicking the blue "Enable API" button [here](https://developers.google.com/gmail/api/quickstart/python#enable_the_api)
-2. Configure the OAuth consent screen:
-   - If you're using a personal email (non-Google Workspace), select "External" as the User Type
-   - Add your email as a test user under "OAuth consent screen" > "Test users" to avoid the "App has not completed verification" error
-   - The "Internal" option only works for Google Workspace accounts
 
-### 2. Create Credentials
+2. Authorize credentials for a desktop application [here](https://developers.google.com/workspace/gmail/api/quickstart/python#authorize_credentials_for_a_desktop_application)
+- Go to Clients 
+- Create Client
+- Application type > Desktop app
+- Create
+- Under "Audience" select "External" if you're using a personal email (non-Google Workspace)
 
-1. In the Google Cloud Console, navigate to "Credentials"
-2. Click "Create Credentials" and select "OAuth client ID"
-3. Choose "Desktop application" as the application type
-4. Name your OAuth client and click "Create"
-5. Download the client secret JSON file
+< add photo of desktop app screenshot here>
+
+- Add yourself as a test user
+
+< add photo of test users screenshot here>
+
+3. Save the downloaded JSON file
 
 ### 3. Set Up Authentication Files
+
+1. Move your downloaded client secret JSON file to the `.secrets` directory
 
 ```bash
 # Create a secrets directory
@@ -35,43 +40,40 @@ mkdir -p src/email_assistant/tools/gmail/.secrets
 
 # Move your downloaded client secret to the secrets directory
 mv /path/to/downloaded/client_secret.json src/email_assistant/tools/gmail/.secrets/secrets.json
+```
 
+2. Run the Gmail setup script
+
+```bash
 # Run the Gmail setup script
 python src/email_assistant/tools/gmail/setup_gmail.py
 ```
 
-The setup script will:
-1. Open a browser window for you to authenticate with your Google account
-2. Generate a `token.json` file in the `.secrets` directory
-3. This token will be used for Gmail API access
+-  This will open a browser window for you to authenticate with your Google account
+-  This will create a `token.json` file in the `.secrets` directory
+-  This token will be used for Gmail API access
 
 ### 4. Run the Gmail Ingestion Script
 
-Once you have authentication set up, you can run the Gmail ingestion script to fetch emails and process them with your email assistant.
+1. Once you have authentication set up, you can run the Gmail ingestion script. 
 
-#### Local 
+2. Start the locally running LangGraph server in one terminal:
 
-1. Start the LangGraph server in one terminal:
 ```
-cd /path/to/project
-langgraph start
+langgraph dev
 ```
 
-2. Run ingestion script in another terminal:
+3. Run the ingestion script in another terminal:
+
 ```bash
-# Basic usage (defaults to email_assistant_hitl_memory graph)
-python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.com
-
-# More options
-python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.com --minutes-since 1000 --rerun --include-read
-
-# Enable LangSmith tracing
-python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.com --enable-tracing --langsmith-project "gmail-assistant"
+python src/email_assistant/tools/gmail/run_ingest.py --email rlance.martin@gmail.com --minutes-since 1000
 ```
 
-> **Note:** If you don't want to run the LangGraph server, you can use the `--mock` flag to test the email fetching functionality without processing emails through LangGraph.
+- This will fetch emails from the past 1000 minutes and process them with your email assistant.
+- It will use the LangGraph SDK to pass each email to the locally running email assistant.
 
-#### Important Parameters:
+#### Important Ingestion Parameters:
+
 - `--graph-name`: Name of the LangGraph to use (default: "email_assistant_hitl_memory")
 - `--email`: The email address to fetch messages from (alternative to setting EMAIL_ADDRESS)
 - `--minutes-since`: Only process emails that are newer than this many minutes (default: 60)
@@ -86,6 +88,7 @@ python src/email_assistant/tools/gmail/run_ingest.py --email your.email@gmail.co
 - `--langsmith-project`: LangSmith project name for tracing (default: "gmail-assistant")
 
 #### Flag Combinations:
+
 - `--rerun --early`: Process one email (regardless if it was processed before) and stop
 - `--rerun`: Process all emails, including ones previously processed by LangGraph
 - `--early`: Process only one new (previously unprocessed) email and stop
