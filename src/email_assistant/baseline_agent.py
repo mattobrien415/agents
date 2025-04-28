@@ -15,10 +15,10 @@ tools = get_tools()
 tools_by_name = get_tools_by_name(tools)
 
 # Initialize the LLM, enforcing tool use (of any available tools)
-llm = init_chat_model("openai:gpt-4o", tool_choice="required", temperature=0.0)
+llm = init_chat_model("openai:gpt-4o", temperature=0.0)
 
 # Bind tools to LLM
-llm_with_tools = llm.bind_tools(tools)
+llm_with_tools = llm.bind_tools(tools, tool_choice="required")
 
 # LLM call node
 def llm_call(state: State):
