@@ -9,10 +9,12 @@ sys.path.append(str(project_root))
 import pytest
 from eval.email_dataset import email_inputs, expected_tool_calls
 from email_assistant.utils import format_messages_string
-from email_assistant.baseline_agent import overall_workflow
+from email_assistant.email_assistant import email_assistant
 from email_assistant.utils import extract_tool_calls
-
 from langsmith import testing as t
+from dotenv import load_dotenv
+
+load_dotenv(".env", override=True)
 
 @pytest.mark.langsmith
 @pytest.mark.parametrize(
@@ -23,14 +25,9 @@ from langsmith import testing as t
     ],
 )
 def test_email_dataset_tool_calls(email_input, expected_calls):
-    """Test if email processing contains expected tool calls."""
-    
-    # Set up the assistant
-    email_assistant = overall_workflow.compile()
-    
-    # Run the baseline agent
-    messages = [{"role": "user", "content": str(email_input)}]
-    result = email_assistant.invoke({"messages": messages})
+    """Test if email processing contains expected tool calls."""    
+    # Run the email assistant
+    result = email_assistant.invoke({"email_input": email_input})
             
     # Extract tool calls from messages list
     extracted_tool_calls = extract_tool_calls(result['messages'])
