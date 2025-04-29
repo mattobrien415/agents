@@ -19,6 +19,7 @@ dependencies = [
     "google-api-python-client>=2.128.0",
     "google-auth-oauthlib",
     "google-auth-httplib2",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]

@@ -1,4 +1,3 @@
-# Baseline agent prompt
 from datetime import datetime
 
 from src.email_assistant.tools.default.prompt_templates import (

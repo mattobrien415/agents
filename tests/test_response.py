@@ -17,6 +17,9 @@ from langgraph.types import Command
 from src.email_assistant.utils import extract_tool_calls, format_messages_string
 from eval.prompts import RESPONSE_CRITERIA_SYSTEM_PROMPT
 
+from dotenv import load_dotenv
+load_dotenv(".env", override=True)
+
 # Force reload the email_dataset module to ensure we get the latest version
 if "eval.email_dataset" in sys.modules:
     importlib.reload(sys.modules["eval.email_dataset"])
