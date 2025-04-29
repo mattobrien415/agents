@@ -22,7 +22,7 @@ def main():
     # The --rich-output flag is kept for backward compatibility
     
     # Define available implementations
-    # Can choose baseline_agent, email_assistant, email_assistant_hitl, email_assistant_hitl_memory
+    # Can choose email_assistant, email_assistant_hitl, email_assistant_hitl_memory
     implementations = [
         "email_assistant",
     ]
