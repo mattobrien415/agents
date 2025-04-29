@@ -11,8 +11,10 @@ from eval.email_dataset import email_inputs, expected_tool_calls
 from email_assistant.utils import format_messages_string
 from email_assistant.baseline_agent import overall_workflow
 from email_assistant.utils import extract_tool_calls
-
 from langsmith import testing as t
+from dotenv import load_dotenv
+
+load_dotenv(".env", override=True)
 
 @pytest.mark.langsmith
 @pytest.mark.parametrize(
