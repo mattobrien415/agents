@@ -26,6 +26,7 @@ wheels/
 *.ipynb
 !notebooks/*.ipynb
 !notebooks/notebooks/*.ipynb
+!tests/*.ipynb
 
 # Virtual Environment
 venv/
