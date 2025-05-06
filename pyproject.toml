@@ -20,6 +20,7 @@ dependencies = [
     "google-auth-oauthlib",
     "google-auth-httplib2",
     "python-dotenv",
+    "pyppeteer",
 ]
 
 [project.optional-dependencies]
