@@ -264,6 +264,22 @@ Thanks,
 Project Team""",
 }
 
+email_input_16 = {
+    "author": "Marketing Team <marketing@openai.com>",
+    "to": "Lance Martin <lance@company.com>",
+    "subject": "Newsletter: New Model from OpenAI",
+    "email_thread": """Hi Lance,
+
+We're excited to announce that we've released a new model from OpenAI!
+
+It's called "GPT-5" and it's a successor to GPT-4.
+
+It's available now and you can find more information [here](https://openai.com/gpt-5).
+
+Thanks,
+Marketing Team""",
+}
+
 # Triage outputs: "ignore", "notify", "respond"
 triage_output_1 = "respond"
 triage_output_2 = "ignore"
@@ -280,6 +296,7 @@ triage_output_12 = "notify"
 triage_output_13 = "respond"
 triage_output_14 = "ignore"
 triage_output_15 = "respond"
+triage_output_16 = "notify"
 
 # Response criteria (when applicable)
 response_criteria_1 = """
@@ -361,13 +378,18 @@ response_criteria_15 = """
 • Send email agreeing to collaborate on the joint presentation and notifying that a meeting has been scheduled with write_email tool call  
 """
 
+response_criteria_16 = """
+• No response needed
+• Ensure the user is notified  
+"""
+
 examples_triage = [
   {
       "inputs": {"email_input": email_input_1},
       "outputs": {"classification": triage_output_1},
   },
   {
-      "inputs": {"emaexamples_triageil_input": email_input_2},
+      "inputs": {"email_input": email_input_2},
       "outputs": {"classification": triage_output_2},
   },
   {
@@ -422,30 +444,38 @@ examples_triage = [
       "inputs": {"email_input": email_input_15},
       "outputs": {"classification": triage_output_15},
   },
+  {
+      "inputs": {"email_input": email_input_16},
+      "outputs": {"classification": triage_output_16},
+  },
 ]
 
 email_inputs = [
         email_input_1, email_input_2, email_input_3, email_input_4, email_input_5,
         email_input_6, email_input_7, email_input_8, email_input_9, email_input_10,
-        email_input_11, email_input_12, email_input_13, email_input_14, email_input_15
+        email_input_11, email_input_12, email_input_13, email_input_14, email_input_15,
+        email_input_16
     ]
 
 email_names = [
     "email_input_1", "email_input_2", "email_input_3", "email_input_4", "email_input_5",
     "email_input_6", "email_input_7", "email_input_8", "email_input_9", "email_input_10",
-    "email_input_11", "email_input_12", "email_input_13", "email_input_14", "email_input_15"
+    "email_input_11", "email_input_12", "email_input_13", "email_input_14", "email_input_15",
+    "email_input_16"
 ]
 
 response_criteria_list = [
     response_criteria_1, response_criteria_2, response_criteria_3, response_criteria_4, response_criteria_5,
     response_criteria_6, response_criteria_7, response_criteria_8, response_criteria_9, response_criteria_10,
-    response_criteria_11, response_criteria_12, response_criteria_13, response_criteria_14, response_criteria_15
+    response_criteria_11, response_criteria_12, response_criteria_13, response_criteria_14, response_criteria_15,
+    response_criteria_16
 ]
 
 triage_outputs_list = [
     triage_output_1, triage_output_2, triage_output_3, triage_output_4, triage_output_5,
     triage_output_6, triage_output_7, triage_output_8, triage_output_9, triage_output_10,
-    triage_output_11, triage_output_12, triage_output_13, triage_output_14, triage_output_15
+    triage_output_11, triage_output_12, triage_output_13, triage_output_14, triage_output_15,
+    triage_output_16
 ]
 
 # Define expected tool calls for each email response based on content analysis
@@ -465,5 +495,6 @@ expected_tool_calls = [
     [],                                                                      # email_input_12: Subscription renewal - ignore
     ["write_email", "done"],                                                 # email_input_13: Doctor appointment reminder
     [],                                                                      # email_input_14: Social media notification - no action needed
-    ["check_calendar_availability", "schedule_meeting", "write_email", "done"] # email_input_15: Joint presentation
+    ["check_calendar_availability", "schedule_meeting", "write_email", "done"], # email_input_15: Joint presentation
+    [],                                                                      # email_input_16: Newsletter - notification only
 ]
