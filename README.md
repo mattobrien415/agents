@@ -58,11 +58,11 @@ uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 lang
 
 ![overview-eval](notebooks/img/overview_eval.png)
 
-We introduce a collection of sample emails with ground truth classifications, responses, and expected tool calls defined in `eval/email_dataset.py`. We then use this dataset to test the two assistants above using both Pytest and LangSmith `evaluate` API. The `run_all_tests.py` script can be used to run Pytest on all examples for each assistant in this repo.
+We introduce a collection of sample emails with ground truth classifications, responses, and expected tool calls defined in `eval/email_dataset.py`. We then use this dataset to test the two assistants above using both Pytest and LangSmith `evaluate` API. The `tests/run_all_tests.py` script can be used to run Pytest on all examples for each assistant in this repo.
 
 ```bash
 # Run with rich output display
-python run_all_tests.py --rich-output
+python -m tests.run_all_tests --rich-output
 ```
 
 ![Screenshot 2025-04-08 at 8 07 48 PM](notebooks/img/eval.png)
