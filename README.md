@@ -11,17 +11,19 @@ We're going to build an agent that can act an an e-mail assistant, because this 
 ### Prerequisites
 
 1. Create a `.env` file in the root directory with the following that mirrors the `.env.example` file:
-   LANGSMITH_API_KEY=your_langsmith_api_key
-   LANGSMITH_TRACING=true
-   OPENAI_API_KEY=your_openai_api_key
-   ```
 
-   Alternatively, you can also set the environment variables in your terminal:
-   ```shell
-   export LANGSMITH_API_KEY=your_langsmith_api_key
-   export LANGSMITH_TRACING=true
-   export OPENAI_API_KEY=your_openai_api_key
-   ```
+```shell
+LANGSMITH_API_KEY=your_langsmith_api_key
+LANGSMITH_TRACING=true
+OPENAI_API_KEY=your_openai_api_key
+```
+
+Alternatively, you can also set the environment variables in your terminal:
+```shell
+export LANGSMITH_API_KEY=your_langsmith_api_key
+export LANGSMITH_TRACING=true
+export OPENAI_API_KEY=your_openai_api_key
+```
 
 2. Create a virtual environment and activate it:
 ```shell
