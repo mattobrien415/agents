@@ -278,7 +278,7 @@ def triage_interrupt_handler(state: State, store: BaseStore) -> Command[Literal[
         messages.append({"role": "user",
                         "content": f"The user decided to ignore the email even though it was classified as notify. Update triage preferences to capture this."
                         })
-        # Update memory with feedback using the memory manager
+        # Update memory with feedback 
         update_memory(store, ("email_assistant", "triage_preferences"), messages)
         goto = END
 
