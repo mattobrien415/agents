@@ -27,6 +27,9 @@ We're going to build an agent that can act an an e-mail assistant, because this 
 ```shell
 $ python3 -m venv .venv
 $ source .venv/bin/activate
+# Ensure you have a recent version of pip (required for editable installs with pyproject.toml)
+$ python3 -m pip install --upgrade pip
+# Install the package in editable mode
 $ pip install -e .
 ```
 
