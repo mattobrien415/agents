@@ -9,7 +9,7 @@ We're going to build an agent that can act an an e-mail assistant, because this 
 ## Environment Setup 
 
 ### Sign up for LangSmith
-* Sign up [here](https://docs.smith.langchain.com/) 
+* Sign up [here](https://smith.langchain.com/) 
 * Generate an API key from the Settings page, you'll set this as an environment variable in the next step.
 
 ### Prerequisites
