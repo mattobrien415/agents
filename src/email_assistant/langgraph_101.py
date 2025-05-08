@@ -3,6 +3,9 @@ from langchain.chat_models import init_chat_model
 from langchain.tools import tool
 from langgraph.graph import MessagesState, StateGraph, END, START
 from email_assistant.utils import show_graph
+from dotenv import load_dotenv
+
+load_dotenv(".env")
 
 @tool
 def write_email(to: str, subject: str, content: str) -> str:

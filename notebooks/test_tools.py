@@ -14,7 +14,7 @@ from email_assistant.utils import extract_tool_calls
 from langsmith import testing as t
 from dotenv import load_dotenv
 
-load_dotenv(".env", override=True)
+load_dotenv(".env")
 
 @pytest.mark.langsmith
 @pytest.mark.parametrize(
