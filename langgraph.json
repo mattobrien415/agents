@@ -7,7 +7,7 @@
       "email_assistant_hitl_memory": "./src/email_assistant/email_assistant_hitl_memory.py:email_assistant"
     },
     "python_version": "3.11",
-    "env": "./.env",
+    "env": ".env",
     "dependencies": [
       "."
     ],

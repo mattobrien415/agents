@@ -8,6 +8,10 @@ We're going to build an agent that can act an an e-mail assistant, because this 
 
 ## Environment Setup 
 
+### Sign up for LangSmith
+* Sign up [here](https://smith.langchain.com/) 
+* Generate an API key from the Settings page, you'll set this as an environment variable in the next step.
+
 ### Prerequisites
 
 1. Create a `.env` file in the root directory with the following that mirrors the `.env.example` file:
@@ -15,6 +19,7 @@ We're going to build an agent that can act an an e-mail assistant, because this 
 ```shell
 LANGSMITH_API_KEY=your_langsmith_api_key
 LANGSMITH_TRACING=true
+LANGSMITH_PROJECT="interrupt-workshop"
 OPENAI_API_KEY=your_openai_api_key
 ```
 

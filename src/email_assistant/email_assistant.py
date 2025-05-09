@@ -10,6 +10,9 @@ from src.email_assistant.utils import parse_email, format_email_markdown
 
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command
+from dotenv import load_dotenv
+
+load_dotenv(".env")
 
 # Get tools
 tools = get_tools()
