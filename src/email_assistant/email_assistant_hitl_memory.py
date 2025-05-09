@@ -401,6 +401,7 @@ def interrupt_handler(state: State, store: BaseStore) -> Command[Literal["llm_ca
 
             # Tool selection 
             tool = tools_by_name[tool_call["name"]]
+            initial_tool_call = tool_call["args"]
             
             # Get edited args from Agent Inbox
             edited_args = response["args"]["args"]
