@@ -8,14 +8,30 @@ We're going to build an agent that can act an an e-mail assistant, because this 
 
 ## Environment Setup 
 
-### Sign up for LangSmith
-* Sign up [here](https://smith.langchain.com/) 
-* Generate an API key from the Settings page, you'll set this as an environment variable in the next step.
+### Python Version
 
-### Prerequisites
+* Ensure you're using Python 3.11 or later. 
+* This version is required for optimal compatibility with LangGraph. 
 
-1. Create a `.env` file in the root directory with the following that mirrors the `.env.example` file:
+```shell
+python3 --version
+```
 
+### API Keys
+
+* If you don't have an OpenAI API key, you can sign up [here](https://openai.com/index/openai-api/).
+* Sign up for LangSmith [here](https://smith.langchain.com/).
+* Generate a LangSmith API key.
+
+### Set Environment Variables
+
+* Create a `.env` file in the root directory:
+```shell
+# Copy the .env.example file to .env
+cp .env.example .env
+```
+
+* Edit the `.env` file with the following:
 ```shell
 LANGSMITH_API_KEY=your_langsmith_api_key
 LANGSMITH_TRACING=true
@@ -23,14 +39,15 @@ LANGSMITH_PROJECT="interrupt-workshop"
 OPENAI_API_KEY=your_openai_api_key
 ```
 
-Alternatively, you can also set the environment variables in your terminal:
+* You can also set the environment variables in your terminal:
 ```shell
 export LANGSMITH_API_KEY=your_langsmith_api_key
 export LANGSMITH_TRACING=true
 export OPENAI_API_KEY=your_openai_api_key
 ```
 
-2. Create a virtual environment and activate it:
+### Create a virtual environment and activate it
+
 ```shell
 $ python3 -m venv .venv
 $ source .venv/bin/activate
