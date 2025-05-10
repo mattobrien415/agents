@@ -10,6 +10,9 @@ from src.email_assistant.tools.default.prompt_templates import HITL_TOOLS_PROMPT
 from src.email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl, default_background, default_triage_instructions, default_response_preferences, default_cal_preferences
 from src.email_assistant.schemas import State, RouterSchema, StateInput
 from src.email_assistant.utils import parse_email, format_for_display, format_email_markdown
+from dotenv import load_dotenv
+
+load_dotenv(".env")
 
 # Get tools
 tools = get_tools(["write_email", "schedule_meeting", "check_calendar_availability", "Question", "Done"])
@@ -20,8 +23,8 @@ llm = init_chat_model("openai:gpt-4.1", temperature=0.0)
 llm_router = llm.with_structured_output(RouterSchema) 
 
 # Initialize the LLM, enforcing tool use (of any available tools) for agent
-llm = init_chat_model("openai:gpt-4.1", tool_choice="required", temperature=0.0)
-llm_with_tools = llm.bind_tools(tools)
+llm = init_chat_model("openai:gpt-4.1", temperature=0.0)
+llm_with_tools = llm.bind_tools(tools, tool_choice="required")
 
 # Nodes 
 def triage_router(state: State) -> Command[Literal["triage_interrupt_handler", "response_agent", "__end__"]]:
@@ -260,17 +263,22 @@ def interrupt_handler(state: State) -> Command[Literal["llm_call", "__end__"]]:
             # Get edited args from Agent Inbox
             edited_args = response["args"]["args"]
 
+            # Update the AI message's tool call with edited content (reference to the message in the state)
+            ai_message = state["messages"][-1] # Get the most recent message from the state
+            current_id = tool_call["id"] # Store the ID of the tool call being edited
+            
+            # Create a new list of tool calls by filtering out the one being edited and adding the updated version
+            # This avoids modifying the original list directly (immutable approach)
+            updated_tool_calls = [tc for tc in ai_message.tool_calls if tc["id"] != current_id] + [
+                {"type": "tool_call", "name": tool_call["name"], "args": edited_args, "id": current_id}
+            ]
+
+            # Create a new copy of the message with updated tool calls rather than modifying the original
+            # This ensures state immutability and prevents side effects in other parts of the code
+            result.append(ai_message.model_copy(update={"tool_calls": updated_tool_calls}))
+
             # Update the write_email tool call with the edited content from Agent Inbox
             if tool_call["name"] == "write_email":
-                
-                # Update the AI message's tool call with edited content (reference to the message in the state)
-                ai_message = state["messages"][-1]
-                current_id = tool_call["id"]
-                
-                # Replace the original tool call with the edited one (any changes made to this reference affect the original object in the state)
-                ai_message.tool_calls = [tc for tc in ai_message.tool_calls if tc["id"] != current_id] + [
-                    {"type": "tool_call", "name": tool_call["name"], "args": edited_args, "id": current_id}
-                ]
                 
                 # Execute the tool with edited args
                 observation = tool.invoke(edited_args)
@@ -281,14 +289,6 @@ def interrupt_handler(state: State) -> Command[Literal["llm_call", "__end__"]]:
             # Update the schedule_meeting tool call with the edited content from Agent Inbox
             elif tool_call["name"] == "schedule_meeting":
                 
-                # Update the AI message's tool call with edited content
-                ai_message = state["messages"][-1]
-                current_id = tool_call["id"]
-                
-                # Replace the original tool call with the edited one
-                ai_message.tool_calls = [tc for tc in ai_message.tool_calls if tc["id"] != current_id] + [
-                    {"type": "tool_call", "name": tool_call["name"], "args": edited_args, "id": current_id}
-                ]
                 
                 # Execute the tool with edited args
                 observation = tool.invoke(edited_args)

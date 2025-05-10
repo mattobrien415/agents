@@ -4,25 +4,56 @@ AI agents promise to transform how we work, but there's often a gap between hype
 
 We're going to build an agent that can act an an e-mail assistant, because this is often a tedious task that could benefit from an AI assistant, but it requires a high level of personalization (e.g., what to respond to, what to ignore, what to schedule a meeting for, and how to respond). The ideas and approaches shown here can be applied to other agents across a wide range of tasks. Here is a map of the components covered:
 
-![interrupt_conf_high_level](https://github.com/user-attachments/assets/76239139-1267-4933-b839-28bd01513953)
+![overview](notebooks/img/overview.png)
 
 ## Environment Setup 
 
-### Prerequisites
+### Python Version
 
-1. Set up your LangSmith API key as an environment variable:
-   ```bash
-   export LANGCHAIN_API_KEY=your_langsmith_api_key
-   ```
-2. Set up your OpenAI API key (default; you can also use other LLMs):
-   ```bash
-   export OPENAI_API_KEY=your_openai_api_key
-   ```
+* Ensure you're using Python 3.11 or later. 
+* This version is required for optimal compatibility with LangGraph. 
 
-Create a virtual environment and activate it:
+```shell
+python3 --version
+```
+
+### API Keys
+
+* If you don't have an OpenAI API key, you can sign up [here](https://openai.com/index/openai-api/).
+* Sign up for LangSmith [here](https://smith.langchain.com/).
+* Generate a LangSmith API key.
+
+### Set Environment Variables
+
+* Create a `.env` file in the root directory:
+```shell
+# Copy the .env.example file to .env
+cp .env.example .env
+```
+
+* Edit the `.env` file with the following:
+```shell
+LANGSMITH_API_KEY=your_langsmith_api_key
+LANGSMITH_TRACING=true
+LANGSMITH_PROJECT="interrupt-workshop"
+OPENAI_API_KEY=your_openai_api_key
+```
+
+* You can also set the environment variables in your terminal:
+```shell
+export LANGSMITH_API_KEY=your_langsmith_api_key
+export LANGSMITH_TRACING=true
+export OPENAI_API_KEY=your_openai_api_key
+```
+
+### Create a virtual environment and activate it
+
 ```shell
 $ python3 -m venv .venv
 $ source .venv/bin/activate
+# Ensure you have a recent version of pip (required for editable installs with pyproject.toml)
+$ python3 -m pip install --upgrade pip
+# Install the package in editable mode
 $ pip install -e .
 ```
 
@@ -34,7 +65,7 @@ The repo is organized into the 4 sections, with a notebook for each and accompan
 * Notebook: `notebooks/agent.ipynb`
 * `src/email_assistant/email_assistant.py`
 
-![interrupt_conf_high_level_agent](https://github.com/user-attachments/assets/ab053d8d-8010-455d-82b4-47e20596dd42)
+![overview-agent](notebooks/img/overview_agent.png)
 
 In this section, we review the philosophy of building agents, thinking about which parts we can encode as a [fixed workflow](https://langchain-ai.github.io/langgraph/tutorials/workflows/) and which need to be an agent. We compare a tool-calling agent to an agentic workflow, which has a dedicated router to handle the email triage step and allows the agent to focus on the email response. We introduce LangGraph Platform, which can be used to run both of them locally:
 ```shell
@@ -49,13 +80,13 @@ uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 lang
 * Notebook: `notebooks/evaluation.ipynb`
 * `eval` and `tests` directories
 
-![interrupt_conf_high_level_eval](https://github.com/user-attachments/assets/a8b9bd84-23eb-42c8-954a-0cf24ecdee63)
+![overview-eval](notebooks/img/overview_eval.png)
 
-We introduce a collection of sample emails with ground truth classifications, responses, and expected tool calls defined in `eval/email_dataset.py`. We then use this dataset to test the two assistants above using both Pytest and LangSmith `evaluate` API. The `run_all_tests.py` script can be used to run Pytest on all examples for each assistant in this repo.
+We introduce a collection of sample emails with ground truth classifications, responses, and expected tool calls defined in `eval/email_dataset.py`. We then use this dataset to test the two assistants above using both Pytest and LangSmith `evaluate` API. The `tests/run_all_tests.py` script can be used to run Pytest on all examples for each assistant in this repo.
 
 ```bash
 # Run with rich output display
-python run_all_tests.py --rich-output
+python -m tests.run_all_tests --rich-output
 ```
 
 ![Screenshot 2025-04-08 at 8 07 48 PM](notebooks/img/eval.png)
@@ -70,7 +101,7 @@ python -m eval.evaluate_triage
 * Notebook: `notebooks/hitl.ipynb`
 * `src/email_assistant/email_assistant_hitl.py`
 
-![interrupt_conf_high_level_hitl](https://github.com/user-attachments/assets/0773b752-09d2-477a-9288-70c84cec7546)
+![overview-hitl](notebooks/img/overview_hitl.png)
 
 What if we want the ability to review and correct the assistant's decisions? In this section, we show how to add a human-in-the-loop (HITL) to the assistant. For this, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox) to review and correct the assistant's decisions.
 
@@ -81,7 +112,7 @@ What if we want the ability to review and correct the assistant's decisions? In 
 * Notebook: `notebooks/memory.ipynb`
 * `src/email_assistant/email_assistant_hitl_memory.py`
 
-![interrupt_conf_high_level_memory](https://github.com/user-attachments/assets/f0965203-1126-4c2b-9d0e-92d9c9c19ced)
+![overview-memory](notebooks/img/overview_memory.png)  
 
 Our email assistant becomes more powerful when we add memory capabilities, allowing it to learn from user feedback and adapt to preferences over time. The memory-enabled assistant (`email_assistant_hitl_memory.py`) uses [LangMem](https://langchain-ai.github.io/langmem/) to manage memories seamlessly with [LangGraph Store](https://langchain-ai.github.io/langgraph/concepts/memory/#long-term-memory). Over time, you can see memories accumulate in the `Memory` store when viewing in LangGraph Studio.
 

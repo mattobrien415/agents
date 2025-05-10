@@ -17,6 +17,9 @@ from langgraph.types import Command
 from src.email_assistant.utils import extract_tool_calls, format_messages_string
 from eval.prompts import RESPONSE_CRITERIA_SYSTEM_PROMPT
 
+from dotenv import load_dotenv
+load_dotenv(".env", override=True)
+
 # Force reload the email_dataset module to ensure we get the latest version
 if "eval.email_dataset" in sys.modules:
     importlib.reload(sys.modules["eval.email_dataset"])
@@ -140,13 +143,8 @@ def test_email_dataset_tool_calls(email_input, email_name, criteria, expected_ca
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
     
-    # Run the agent
-    if AGENT_MODULE == "baseline_agent":
-        # Baseline agent takes messages
-        messages = [{"role": "user", "content": str(email_input)}]
-        result = email_assistant.invoke({"messages": messages}, config=thread_config)
-        
-    elif AGENT_MODULE == "email_assistant":
+    # Run the agent        
+    if AGENT_MODULE == "email_assistant":
         # Workflow agent takes email_input directly
         result = email_assistant.invoke({"email_input": email_input}, config=thread_config)
         
@@ -221,13 +219,8 @@ def test_response_criteria_evaluation(email_input, email_name, criteria, expecte
     # Set up the assistant
     email_assistant, thread_config, _ = setup_assistant()
     
-    # Run the agent
-    if AGENT_MODULE == "baseline_agent":
-        # Baseline agent takes messages
-        messages = [{"role": "user", "content": str(email_input)}]
-        result = email_assistant.invoke({"messages": messages}, config=thread_config)
-        
-    elif AGENT_MODULE == "email_assistant":
+    # Run the agent        
+    if AGENT_MODULE == "email_assistant":
         # Workflow agent takes email_input directly
         result = email_assistant.invoke({"email_input": email_input}, config=thread_config)
         

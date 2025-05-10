@@ -3,10 +3,11 @@ import os
 import subprocess
 import sys
 import argparse
+from pathlib import Path
 
 def main():
     # LangSmith suite / project name
-    langsmith_project = "E-Mail Assistant Testing: Interrupt Conference"
+    langsmith_project = "E-Mail Assistant Testing"
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run tests for email assistant implementations")
@@ -22,7 +23,7 @@ def main():
     # The --rich-output flag is kept for backward compatibility
     
     # Define available implementations
-    # Can choose baseline_agent, email_assistant, email_assistant_hitl, email_assistant_hitl_memory
+    # Can choose email_assistant, email_assistant_hitl, email_assistant_hitl_memory
     implementations = [
         "email_assistant",
     ]
@@ -60,7 +61,7 @@ def main():
         pytest_options.append(module_param)
         
         # Determine which test files to run based on implementation
-        test_files = ["tests/test_response.py"]  # All implementations run response tests
+        test_files = ["test_response.py"]  # All implementations run response tests
                     
         # Run each test file
         print(f"   Project: {langsmith_project}")
@@ -70,8 +71,16 @@ def main():
             experiment_name = f"Test: {test_file.split('/')[-1]} | Agent: {implementation}"
             print(f"   Experiment: {experiment_name}")
             os.environ["LANGSMITH_EXPERIMENT"] = experiment_name
+            
+            # Run pytest from the tests directory
             cmd = ["python", "-m", "pytest", test_file] + pytest_options
+            
+            # Change to the script's directory to ensure correct imports
+            script_dir = Path(__file__).parent
+            cwd = os.getcwd()
+            os.chdir(script_dir)
             result = subprocess.run(cmd, capture_output=True, text=True)
+            os.chdir(cwd)  # Restore original working directory
             
             # Print test output
             print(result.stdout)
