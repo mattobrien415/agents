@@ -140,8 +140,7 @@ async def ingest_email_to_langgraph(email_data, graph_name, url="http://127.0.0.
         multitask_strategy="rollback",
     )
     
-    print(f"Run created successfully")
-    print(f"View in LangGraph Studio: http://127.0.0.1:2024/threads/{thread_id}")
+    print(f"Run created successfully created with thread ID: {thread_id}")
     
     return thread_id, run
 
