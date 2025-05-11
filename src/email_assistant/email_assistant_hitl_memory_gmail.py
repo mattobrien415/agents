@@ -545,7 +545,9 @@ def should_continue(state: State, store: BaseStore) -> Literal["interrupt_handle
                 return "interrupt_handler"
 
 def mark_as_read_node(state: State):
-    mark_as_read(state["email"]["id"])
+    email_input = state["email_input"]
+    author, to, subject, email_thread, email_id = parse_email(email_input)
+    mark_as_read(email_id)
 
 # Build workflow
 agent_builder = StateGraph(State)

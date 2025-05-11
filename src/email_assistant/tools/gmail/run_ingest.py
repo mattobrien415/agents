@@ -26,21 +26,32 @@ TOKEN_PATH = _SECRETS_DIR / "token.json"
 
 def extract_message_part(payload):
     """Extract content from a message part."""
-    if payload.get("body", {}).get("data"):
-        # Handle base64 encoded content
-        data = payload["body"]["data"]
-        decoded = base64.urlsafe_b64decode(data).decode("utf-8")
-        return decoded
-
-    # Handle multipart messages
+    # If this is multipart, process with preference for text/plain
     if payload.get("parts"):
-        text_parts = []
+        # First try to find text/plain part
         for part in payload["parts"]:
-            # Recursively process parts
+            mime_type = part.get("mimeType", "")
+            if mime_type == "text/plain" and part.get("body", {}).get("data"):
+                data = part["body"]["data"]
+                return base64.urlsafe_b64decode(data).decode("utf-8")
+                
+        # If no text/plain found, try text/html
+        for part in payload["parts"]:
+            mime_type = part.get("mimeType", "")
+            if mime_type == "text/html" and part.get("body", {}).get("data"):
+                data = part["body"]["data"]
+                return base64.urlsafe_b64decode(data).decode("utf-8")
+                
+        # If we still haven't found content, recursively check for nested parts
+        for part in payload["parts"]:
             content = extract_message_part(part)
             if content:
-                text_parts.append(content)
-        return "\n".join(text_parts)
+                return content
+    
+    # Not multipart, try to get content directly
+    if payload.get("body", {}).get("data"):
+        data = payload["body"]["data"]
+        return base64.urlsafe_b64decode(data).decode("utf-8")
 
     return ""
 
