@@ -16,7 +16,7 @@ async def main(
     url: Optional[str] = None,
     minutes_since: int = 60,
     schedule: str = "*/10 * * * *",
-    graph_name: str = "email_assistant_hitl_memory",
+    graph_name: str = "email_assistant_hitl_memory_gmail",
     include_read: bool = False,
 ):
     """Set up a cron job for email ingestion"""
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--graph-name",
         type=str,
-        default="email_assistant_hitl_memory",
+        default="email_assistant_hitl_memory_gmail",
         help="Name of the graph to use for processing emails",
     )
     parser.add_argument(

@@ -15,7 +15,7 @@ class JobKickoff:
     """State for the email ingestion cron job"""
     email: str
     minutes_since: int = 60
-    graph_name: str = "email_assistant_hitl_memory"
+    graph_name: str = "email_assistant_hitl_memory_gmail"
     url: str = "http://127.0.0.1:2024"
     include_read: bool = False
     rerun: bool = False

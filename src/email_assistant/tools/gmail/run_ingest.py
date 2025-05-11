@@ -238,7 +238,7 @@ def parse_args():
     parser.add_argument(
         "--graph-name", 
         type=str, 
-        default="email_assistant_hitl_memory",
+        default="email_assistant_hitl_memory_gmail",
         help="Name of the LangGraph to use"
     )
     parser.add_argument(

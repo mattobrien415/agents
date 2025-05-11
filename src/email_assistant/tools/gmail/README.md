@@ -1,15 +1,14 @@
 # Gmail Integration Tools
 
-This directory contains tools for integrating with Gmail and Google Calendar APIs to enable the email assistant to work with real emails and calendar events.
+Connect your emails assistant to Gmail and Google Calendar APIs.
 
-## Features
+## Graph
 
-- **Email Fetching**: Retrieve recent emails from your Gmail account
-- **Email Sending**: Send replies to email threads
-- **Calendar Availability**: Check your Google Calendar for availability on specific dates
-- **Meeting Scheduling**: Create calendar events and send invites to attendees
+The `email_assistant_hitl_memory_gmail` graph is already configured to use Gmail tools.
 
-## Setup Instructions
+You need to run setup below to obtain the credentials needed to run the graph.
+
+## Setup Credentials
 
 ### 1. Set up Google Cloud Project and Enable Gmail API
 
@@ -30,7 +29,7 @@ This directory contains tools for integrating with Gmail and Google Calendar API
 
 3. Save the downloaded JSON file
 
-### 3. Set Up Authentication Files
+### 2. Set Up Authentication Files
 
 1. Move your downloaded client secret JSON file to the `.secrets` directory
 
@@ -53,23 +52,23 @@ python src/email_assistant/tools/gmail/setup_gmail.py
 -  This will create a `token.json` file in the `.secrets` directory
 -  This token will be used for Gmail API access
 
-### 4. Run the Gmail Ingestion Script
+## Run A Local Deployment
 
-1. Once you have authentication set up, you can run the Gmail ingestion script. 
+### 1. Run the Gmail Ingestion Script with Locally Running LangGraph Server
 
-2. Start the locally running LangGraph server in one terminal:
+1. Once you have authentication set up, run LangGraph server locally:
 
 ```
 langgraph dev
 ```
 
-3. Run the ingestion script in another terminal with desired parameters:
+2. Run the ingestion script in another terminal with desired parameters:
 
 ```bash
 python src/email_assistant/tools/gmail/run_ingest.py --email lance@langgraph.dev --minutes-since 1000
 ```
 
-- This will fetch emails from the past 1000 minutes and process them with your email assistant.
+- By default, this will use the local deployment URL (http://127.0.0.1:2024) and fetch emails from the past 1000 minutes.
 - It will use the LangGraph SDK to pass each email to the locally running email assistant.
 
 #### Important Ingestion Parameters:
@@ -106,56 +105,47 @@ python src/email_assistant/tools/gmail/run_ingest.py --email lance@langgraph.dev
   - Try running with all options to process everything: `--include-read --skip-filters --minutes-since 1000`
   - Use the `--mock` flag to test the system with simulated emails
 
-## Deployment
+### 2. Connect to Agent Inbox
 
-### Deploy to LangGraph Platform
+After ingestion, you can access your all threads in the Agent Inbox:
+* Deployment URL: http://127.0.0.1:2024
+* Assistant/Graph ID: `email_assistant_hitl_memory_gmail`
+* Name: `Graph Name`
+
+## Run A Hosted Deployment
+
+### 1. Deploy to LangGraph Platform
 
 1. Navigate to the deployments page in LangSmith
 2. Click New Deployment
 3. Connect it to your GitHub repo containing this code
-4. Give it a name like Lance-Email-Assistant
+4. Give it a name like `Yourname-Email-Assistant`
 5. Add the following environment variables:
    * `OPENAI_API_KEY`
-   * `GMAIL_SECRET` - This is the value in `.secrets/secrets.json`
-   * `GMAIL_TOKEN` - This is the value in `.secrets/token.json`
+   * `GMAIL_SECRET` - This is the full dictionary in `.secrets/secrets.json`
+   * `GMAIL_TOKEN` - This is the full dictionary in `.secrets/token.json`
 6. Click Submit 
-7. Get `LANGGRAPH_CLOUD_URL` from the deployment page 
+7. Get the `API URL` from the deployment page 
 
-### Test Ingestion with Deployed URL
+### 2. Run Ingestion with Hosted Deployment
 
 Once your LangGraph deployment is up and running, you can test the email ingestion with:
 
 ```bash
-python src/email_assistant/tools/gmail/run_ingest.py \
-  --email your@email.com \
-  --minutes-since 1440 \
-  --include-read \
-  --url https://your-deployment-url.us.langgraph.app
+python src/email_assistant/tools/gmail/run_ingest.py --email lance@langchain.dev --minutes-since 2440 --include-read --url https://your-email-assistant-xxx.us.langgraph.app
 ```
 
-Important flags to consider:
-- `--include-read`: Include emails marked as read (by default, only unread emails are processed)
-- `--minutes-since 1440`: Fetch emails from the past 24 hours
-- `--rerun`: Process emails that were previously processed
+### 3. Connect to Agent Inbox
 
-If you don't see your emails appearing:
-1. Add the `--include-read` flag (emails are marked as read after being processed)
-2. Increase the `--minutes-since` value 
-3. Try using `--skip-filters` to bypass additional filtering
+After ingestion, you can access your all threads in the Agent Inbox:
+* Deployment URL: `API URL`
+* Assistant/Graph ID: `email_assistant_hitl_memory_gmail`
+* Name: `Graph Name`
+* LangSmith API Key: `LANGSMITH_API_KEY`
 
-### Test Connection to Agent Inbox
+### 4. Set up Cron Job
 
-After ingestion, you can access your emails in the Agent Inbox:
-* URL: `LANGGRAPH_CLOUD_URL`
-* Graph name: `email_assistant_hitl_memory`
-
-You should see your email threads listed in the interface, where you can:
-- View email conversation history
-- Review assistant responses
-- Edit or approve responses before sending
-- Provide human-in-the-loop guidance
-
-### Set up Automated Cron Job
+With a hosted deployment, you can set up a cron job to run the ingestion script at a specified interval.
 
 To automate email ingestion, set up a scheduled cron job using the included setup script:
 
@@ -182,9 +172,9 @@ The cron job works by:
 3. The `cron` graph imports and reuses the email ingestion logic from `run_ingest.py`
 4. Each run fetches and processes new emails
 
-### How the Cron System Works
+#### How the Cron Works
 
-The cron system consists of two main components:
+The cron consists of two main components:
 
 1. **`src/email_assistant/cron.py`**: Defines a simple LangGraph that:
    - Takes email configuration parameters as input
@@ -198,7 +188,7 @@ The cron system consists of two main components:
 
 This approach maximizes code reuse by leveraging the same email processing logic in both manual and scheduled runs, ensuring consistent behavior.
 
-### Managing Cron Jobs
+#### Managing Cron Jobs
 
 To view, update, or delete existing cron jobs, you can use the LangGraph SDK:
 
