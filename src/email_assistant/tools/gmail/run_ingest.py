@@ -116,19 +116,38 @@ async def ingest_email_to_langgraph(email_data, graph_name, url="http://127.0.0.
     )
     print(f"Gmail thread ID: {raw_thread_id} → LangGraph thread ID: {thread_id}")
     
+    thread_exists = False
     try:
         # Try to get existing thread info
         thread_info = await client.threads.get(thread_id)
+        thread_exists = True
         print(f"Found existing thread: {thread_id}")
     except Exception as e:
         # If thread doesn't exist, create it
         print(f"Creating new thread: {thread_id}")
         thread_info = await client.threads.create(thread_id=thread_id)
     
+    # If thread exists, clean up previous runs
+    if thread_exists:
+        try:
+            # List all runs for this thread
+            runs = await client.runs.list(thread_id)
+            
+            # Delete all previous runs to avoid state accumulation
+            for run_info in runs:
+                run_id = run_info.id
+                print(f"Deleting previous run {run_id} from thread {thread_id}")
+                try:
+                    await client.runs.delete(thread_id, run_id)
+                except Exception as e:
+                    print(f"Failed to delete run {run_id}: {str(e)}")
+        except Exception as e:
+            print(f"Error listing/deleting runs: {str(e)}")
+    
     # Update thread metadata with current email ID
     await client.threads.update(thread_id, metadata={"email_id": email_data["id"]})
     
-    # Create a run for this email
+    # Create a fresh run for this email
     print(f"Creating run for thread {thread_id} with graph {graph_name}")
     
     run = await client.runs.create(
@@ -144,7 +163,7 @@ async def ingest_email_to_langgraph(email_data, graph_name, url="http://127.0.0.
         multitask_strategy="rollback",
     )
     
-    print(f"Run created successfully created with thread ID: {thread_id}")
+    print(f"Run created successfully with thread ID: {thread_id}")
     
     return thread_id, run
 
