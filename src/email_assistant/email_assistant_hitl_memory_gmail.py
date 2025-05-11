@@ -10,6 +10,7 @@ from langgraph.types import interrupt, Command
 
 from src.email_assistant.tools import get_tools, get_tools_by_name
 from src.email_assistant.tools.gmail.prompt_templates import GMAIL_TOOLS_PROMPT
+from src.email_assistant.tools.gmail.gmail_tools import mark_as_read
 from src.email_assistant.prompts import triage_system_prompt, triage_user_prompt, agent_system_prompt_hitl_memory, default_triage_instructions, default_background, default_response_preferences, default_cal_preferences
 from src.email_assistant.schemas import State, RouterSchema, StateInput
 from src.email_assistant.utils import parse_email, format_for_display, format_email_markdown
@@ -531,7 +532,7 @@ def interrupt_handler(state: State, store: BaseStore) -> Command[Literal["llm_ca
     return Command(goto=goto, update=update)
 
 # Conditional edge function
-def should_continue(state: State, store: BaseStore) -> Literal["interrupt_handler", END]:
+def should_continue(state: State, store: BaseStore) -> Literal["interrupt_handler", "mark_as_read_node"]:
     """Route to tool handler, or end if Done tool called"""
     messages = state["messages"]
     last_message = messages[-1]
@@ -539,9 +540,12 @@ def should_continue(state: State, store: BaseStore) -> Literal["interrupt_handle
         for tool_call in last_message.tool_calls: 
             if tool_call["name"] == "Done":
                 # TODO: Here, we could update the background memory with the email-response for follow up actions. 
-                return END
+                return "mark_as_read_node"
             else:
                 return "interrupt_handler"
+
+def mark_as_read_node(state: State):
+    mark_as_read(state["email"]["id"])
 
 # Build workflow
 agent_builder = StateGraph(State)
@@ -549,6 +553,7 @@ agent_builder = StateGraph(State)
 # Add nodes - with store parameter
 agent_builder.add_node("llm_call", llm_call)
 agent_builder.add_node("interrupt_handler", interrupt_handler)
+agent_builder.add_node("mark_as_read_node", mark_as_read_node)
 
 # Add edges
 agent_builder.add_edge(START, "llm_call")
@@ -557,9 +562,10 @@ agent_builder.add_conditional_edges(
     should_continue,
     {
         "interrupt_handler": "interrupt_handler",
-        END: END,
+        "mark_as_read_node": "mark_as_read_node",
     },
 )
+agent_builder.add_edge("mark_as_read_node", END)
 
 # Compile the agent
 response_agent = agent_builder.compile()
@@ -570,7 +576,9 @@ overall_workflow = (
     .add_node(triage_router)
     .add_node(triage_interrupt_handler)
     .add_node("response_agent", response_agent)
+    .add_node("mark_as_read_node", mark_as_read_node)
     .add_edge(START, "triage_router")
+    .add_edge("mark_as_read_node", END)
 )
 
 email_assistant = overall_workflow.compile()

@@ -928,3 +928,15 @@ def schedule_meeting_tool(
             return "Failed to schedule meeting"
     except Exception as e:
         return f"Error scheduling meeting: {str(e)}"
+    
+def mark_as_read(
+    message_id,
+    gmail_token: str | None = None,
+    gmail_secret: str | None = None,
+):
+    creds = get_credentials(gmail_token, gmail_secret)
+
+    service = build("gmail", "v1", credentials=creds)
+    service.users().messages().modify(
+        userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
+    ).execute()
