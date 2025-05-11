@@ -118,7 +118,63 @@ Our email assistant becomes more powerful when we add memory capabilities, allow
 
 ### Deployment 
 
-We've built up to a system that can learn our preferences over time. The graph already can be run with LangGraph Platform locally using the `langgraph dev` command and deployed to the LangGraph Platform hosted service.
+We've built up to a system that can learn our preferences over time. The graph can be run locally and deployed to LangGraph Platform for production use.
+
+#### Local Development
+
+Run the application locally using LangGraph Platform:
+
+```shell
+# Install langgraph CLI
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev
+```
+
+#### Deploying to LangGraph Platform
+
+1. Navigate to the deployments page in LangSmith
+2. Click "New Deployment"
+3. Connect to your GitHub repository containing this code
+4. Give your deployment a name (e.g., "Email-Assistant")
+5. Add the necessary environment variables:
+   - `OPENAI_API_KEY`: Your OpenAI API key
+   - `GMAIL_TOKEN`: JSON content from your Gmail token file (for Gmail integration)
+   - `GMAIL_SECRET`: JSON content from your Gmail secrets file (for Gmail integration)
+6. Click "Submit"
+7. Once deployed, you'll receive a URL for your deployment
+
+#### Setting Up Gmail Integration
+
+For production use with real emails, follow these steps:
+
+1. Set up Google API credentials following the instructions in [Gmail Tools README](src/email_assistant/tools/gmail/README.md)
+2. Test your Gmail integration locally:
+   ```shell
+   python src/email_assistant/tools/gmail/run_ingest.py --email your@email.com --minutes-since 1440 --include-read
+   ```
+3. Once deployed, connect to your LangGraph deployment:
+   ```shell
+   python src/email_assistant/tools/gmail/run_ingest.py --email your@email.com --minutes-since 1440 --include-read --url https://your-deployment-url.us.langgraph.app
+   ```
+
+#### Setting Up Automated Email Processing
+
+To automatically process emails on a schedule:
+
+1. Configure a cron job using the provided setup script:
+   ```shell
+   python src/email_assistant/tools/gmail/setup_cron.py \
+     --email your@email.com \
+     --url https://your-deployment-url.us.langgraph.app \
+     --minutes-since 60 \
+     --schedule "0 * * * *" \
+     --include-read
+   ```
+   This will set up an hourly job that processes emails from the past hour.
+
+2. Monitor your automated jobs through the LangGraph Studio UI.
+
+Full documentation for Gmail integration and deployment is available in the [Gmail Tools README](src/email_assistant/tools/gmail/README.md).
 
 ## Tools and Integrations
 
@@ -126,7 +182,13 @@ The email assistant uses a modular tools architecture that allows for different 
 
 - **Default Tools**: By default, the assistant uses mock email and calendar tools for testing and development. These are located in `src/email_assistant/tools/default/`.
 
-- **Gmail Integration**: For connecting to real email and calendar services, the assistant can use Gmail API integration tools in `src/email_assistant/tools/gmail/`. See the [Gmail Tools README](src/email_assistant/tools/gmail/README.md) for setup instructions.
+- **Gmail Integration**: For connecting to real email and calendar services, the assistant uses Gmail API integration tools in `src/email_assistant/tools/gmail/`. This integration allows the assistant to:
+  - Fetch real emails from Gmail
+  - Send replies to email threads
+  - Check calendar availability and schedule meetings
+  - Automate email processing with cron jobs
+  
+  See the [Gmail Tools README](src/email_assistant/tools/gmail/README.md) for detailed setup instructions and the Deployment section above for production configuration.
 
 - **Custom Integrations**: The modular architecture makes it easy to add new tool integrations by following the same pattern as the existing tool packages.
 
