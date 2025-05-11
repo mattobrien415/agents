@@ -12,19 +12,12 @@ import uuid
 import hashlib
 import asyncio
 import argparse
+import os
 from pathlib import Path
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from langgraph_sdk import get_client
-
-# Setup nest_asyncio for asyncio support
-try:
-    import nest_asyncio
-    nest_asyncio.apply()
-    print("Applied nest_asyncio patch")
-except ImportError:
-    print("Warning: nest_asyncio not available. Install with: pip install nest_asyncio")
 
 # Setup paths
 _ROOT = Path(__file__).parent.absolute()
