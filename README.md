@@ -61,153 +61,63 @@ $ pip install -e .
 
 The repo is organized into the 4 sections, with a notebook for each and accompanying code in the `src/email_assistant` directory.
 
+### Preface: LangGraph 101
+For a brief introduction to LangGraph and some of the concepts used in this repo, see the [LangGraph 101 notebook](notebooks/langgraph_101.ipynb). This notebook explains the basics of chat models, tool calling, agents vs workflows, LangGraph nodes / edges / memory, and LangGraph Studio.
+
 ### Building an agent 
 * Notebook: `notebooks/agent.ipynb`
-* `src/email_assistant/email_assistant.py`
+* Code: `src/email_assistant/email_assistant.py`
 
 ![overview-agent](notebooks/img/overview_agent.png)
 
-In this section, we review the philosophy of building agents, thinking about which parts we can encode as a [fixed workflow](https://langchain-ai.github.io/langgraph/tutorials/workflows/) and which need to be an agent. We compare a tool-calling agent to an agentic workflow, which has a dedicated router to handle the email triage step and allows the agent to focus on the email response. We introduce LangGraph Platform, which can be used to run both of them locally:
-```shell
-# Install uv package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev
-```
+This notebook shows how to build the email assistant, combining an [email triage step](https://langchain-ai.github.io/langgraph/tutorials/workflows/) with an agent that handles the email response. You can see the linked code for the full implementation in `src/email_assistant/email_assistant.py`.
 
 ![Screenshot 2025-04-04 at 4 06 18 PM](notebooks/img/studio.png)
 
 ### Evaluation 
 * Notebook: `notebooks/evaluation.ipynb`
-* `eval` and `tests` directories
 
 ![overview-eval](notebooks/img/overview_eval.png)
 
-We introduce a collection of sample emails with ground truth classifications, responses, and expected tool calls defined in `eval/email_dataset.py`. We then use this dataset to test the two assistants above using both Pytest and LangSmith `evaluate` API. The `tests/run_all_tests.py` script can be used to run Pytest on all examples for each assistant in this repo.
-
-```bash
-# Run with rich output display
-python -m tests.run_all_tests --rich-output
-```
+This notebook introduces evaluation with an email dataset in `eval/email_dataset.py`. It shows how to run evaluations using Pytest and the LangSmith `evaluate` API. It runs evaluation for emails responses using LLM-as-a-judge as well as evaluations for tools calls and triage decisions.
 
 ![Screenshot 2025-04-08 at 8 07 48 PM](notebooks/img/eval.png)
 
-In additon, the `evaluate_triage.py` script will run the triage evaluation using the LangSmith `evaluate` API and log the results to LangSmith:
-
-```bash
-python -m eval.evaluate_triage
-```
-
 ### Human-in-the-loop 
 * Notebook: `notebooks/hitl.ipynb`
-* `src/email_assistant/email_assistant_hitl.py`
+* Code: `src/email_assistant/email_assistant_hitl.py`
 
 ![overview-hitl](notebooks/img/overview_hitl.png)
 
-What if we want the ability to review and correct the assistant's decisions? In this section, we show how to add a human-in-the-loop (HITL) to the assistant. For this, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox) to review and correct the assistant's decisions.
+This notebooks shows how to add human-in-the-loop (HITL), allowing the user to review specific tool calls (e.g., send email, schedule meeting). For this, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox) as an interface for human in the loop. You can see the linked code for the full implementation in `src/email_assistant/email_assistant_hitl.py`.
 
 ![Agent Inbox showing email threads](notebooks/img/agent-inbox.png)
 
-
-### Memory & Learning Through Feedback 
+### Memory  
 * Notebook: `notebooks/memory.ipynb`
-* `src/email_assistant/email_assistant_hitl_memory.py`
+* Code: `src/email_assistant/email_assistant_hitl_memory.py`
 
 ![overview-memory](notebooks/img/overview_memory.png)  
 
-Our email assistant becomes more powerful when we add memory capabilities, allowing it to learn from user feedback and adapt to preferences over time. The memory-enabled assistant (`email_assistant_hitl_memory.py`) uses [LangMem](https://langchain-ai.github.io/langmem/) to manage memories seamlessly with [LangGraph Store](https://langchain-ai.github.io/langgraph/concepts/memory/#long-term-memory). Over time, you can see memories accumulate in the `Memory` store when viewing in LangGraph Studio.
+This notebook shows how to add memory to the email assistant, allowing it to learn from user feedback and adapt to preferences over time. The memory-enabled assistant (`email_assistant_hitl_memory.py`) uses the [LangGraph Store](https://langchain-ai.github.io/langgraph/concepts/memory/#long-term-memory) to persist memories. You can see the linked code for the full implementation in `src/email_assistant/email_assistant_hitl_memory.py`.
 
-### Deployment 
+## Connecting to APIs  
 
-We've built up to a system that can learn our preferences over time. The graph can be run locally and deployed to LangGraph Platform for production use.
+The above notebooks using mock email and calendar tools. 
 
-#### Local Development
+### Gmail Integration 
 
-Run the application locally using LangGraph Platform:
+Set up Google API credentials following the instructions in [Gmail Tools README](src/email_assistant/tools/gmail/README.md).
 
-```shell
-# Install langgraph CLI
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uvx --refresh --from "langgraph-cli[inmem]" --with-editable . --python 3.11 langgraph dev
-```
+The README also explains how to deploy the graph to LangGraph Platform.
 
-#### Deploying to LangGraph Platform
+The full implementation of the Gmail integration is in `src/email_assistant/email_assistant_hitl_memory_gmail.py`.
 
-1. Navigate to the deployments page in LangSmith
-2. Click "New Deployment"
-3. Connect to your GitHub repository containing this code
-4. Give your deployment a name (e.g., "Email-Assistant")
-5. Add the necessary environment variables:
-   - `OPENAI_API_KEY`: Your OpenAI API key
-   - `GMAIL_TOKEN`: JSON content from your Gmail token file (for Gmail integration)
-   - `GMAIL_SECRET`: JSON content from your Gmail secrets file (for Gmail integration)
-6. Click "Submit"
-7. Once deployed, you'll receive a URL for your deployment
+## Future Extensions
 
-#### Setting Up Gmail Integration
+Add [LangMem](https://langchain-ai.github.io/langmem/) to manage memories:
+* Manage a collection of background memories. 
+* Add memory tools that can look up facts in the background memories. 
 
-For production use with real emails, follow these steps:
 
-1. Set up Google API credentials following the instructions in [Gmail Tools README](src/email_assistant/tools/gmail/README.md)
-2. Test your Gmail integration locally:
-   ```shell
-   python src/email_assistant/tools/gmail/run_ingest.py --email your@email.com --minutes-since 1440 --include-read
-   ```
-3. Once deployed, connect to your LangGraph deployment:
-   ```shell
-   python src/email_assistant/tools/gmail/run_ingest.py --email your@email.com --minutes-since 1440 --include-read --url https://your-deployment-url.us.langgraph.app
-   ```
 
-#### Setting Up Automated Email Processing
-
-To automatically process emails on a schedule:
-
-1. Configure a cron job using the provided setup script:
-   ```shell
-   python src/email_assistant/tools/gmail/setup_cron.py \
-     --email your@email.com \
-     --url https://your-deployment-url.us.langgraph.app \
-     --minutes-since 60 \
-     --schedule "0 * * * *" \
-     --include-read
-   ```
-   This will set up an hourly job that processes emails from the past hour.
-
-2. Monitor your automated jobs through the LangGraph Studio UI.
-
-Full documentation for Gmail integration and deployment is available in the [Gmail Tools README](src/email_assistant/tools/gmail/README.md).
-
-## Tools and Integrations
-
-The email assistant uses a modular tools architecture that allows for different implementations and integrations to be easily swapped. This is structured in the `src/email_assistant/tools` directory:
-
-- **Default Tools**: By default, the assistant uses mock email and calendar tools for testing and development. These are located in `src/email_assistant/tools/default/`.
-
-- **Gmail Integration**: For connecting to real email and calendar services, the assistant uses Gmail API integration tools in `src/email_assistant/tools/gmail/`. This integration allows the assistant to:
-  - Fetch real emails from Gmail
-  - Send replies to email threads
-  - Check calendar availability and schedule meetings
-  - Automate email processing with cron jobs
-  
-  See the [Gmail Tools README](src/email_assistant/tools/gmail/README.md) for detailed setup instructions and the Deployment section above for production configuration.
-
-- **Custom Integrations**: The modular architecture makes it easy to add new tool integrations by following the same pattern as the existing tool packages.
-
-To use a specific set of tools in your agent:
-
-```python
-# For default tools only
-tools = get_tools()
-
-# For including Gmail tools
-tools = get_tools(include_gmail=True)
-
-# For a specific subset of tools
-tools = get_tools(tool_names=["write_email", "triage_email", "fetch_emails_tool"])
-```
-
-For a complete example of using Gmail tools, see `src/email_assistant/gmail_assistant.py`.
-
-### Agent Inbox
-
-When using human-in-the-loop capabilities, you can view and interact with the agent at:
-https://dev.agentinbox.ai/
