@@ -60,23 +60,64 @@ try:
             
         return ""
     
-    # Function to get credentials from token.json
+    # Function to get credentials from token.json or environment variables
     def get_credentials(gmail_token=None, gmail_secret=None):
-        """Get Gmail API credentials from token.json"""
-        token_path = _SECRETS_DIR / "token.json"
+        """
+        Get Gmail API credentials from token.json or environment variables.
         
-        if not os.path.exists(token_path):
-            logger.error(f"Token file not found at {token_path}")
-            return None
+        This function attempts to load credentials from multiple sources in this order:
+        1. Directly passed gmail_token and gmail_secret parameters
+        2. Environment variables GMAIL_TOKEN and GMAIL_SECRET
+        3. Local files at token_path (.secrets/token.json) and secrets_path (.secrets/secrets.json)
+        
+        Args:
+            gmail_token: Optional JSON string containing token data
+            gmail_secret: Optional JSON string containing credentials
             
-        try:
-            with open(token_path, "r") as f:
-                token_data = json.load(f)
+        Returns:
+            Google OAuth2 Credentials object or None if credentials can't be loaded
+        """
+        token_path = _SECRETS_DIR / "token.json"
+        token_data = None
+        
+        # Try to get token data from various sources
+        if gmail_token:
+            # 1. Use directly passed token parameter if available
+            try:
+                token_data = json.loads(gmail_token) if isinstance(gmail_token, str) else gmail_token
+                logger.info("Using directly provided gmail_token parameter")
+            except Exception as e:
+                logger.warning(f"Could not parse provided gmail_token: {str(e)}")
                 
+        if token_data is None:
+            # 2. Try environment variable
+            env_token = os.getenv("GMAIL_TOKEN")
+            if env_token:
+                try:
+                    token_data = json.loads(env_token)
+                    logger.info("Using GMAIL_TOKEN environment variable")
+                except Exception as e:
+                    logger.warning(f"Could not parse GMAIL_TOKEN environment variable: {str(e)}")
+        
+        if token_data is None:
+            # 3. Try local file
+            if os.path.exists(token_path):
+                try:
+                    with open(token_path, "r") as f:
+                        token_data = json.load(f)
+                    logger.info(f"Using token from {token_path}")
+                except Exception as e:
+                    logger.warning(f"Could not load token from {token_path}: {str(e)}")
+        
+        # If we couldn't get token data from any source, return None
+        if token_data is None:
+            logger.error("Could not find valid token data in any location")
+            return None
+        
+        try:
             from google.oauth2.credentials import Credentials
             
             # Create credentials object with specific format
-            # Using token format from the token.json file
             credentials = Credentials(
                 token=token_data.get("token"),
                 refresh_token=token_data.get("refresh_token"),
@@ -91,7 +132,7 @@ try:
             
             return credentials
         except Exception as e:
-            logger.error(f"Error loading credentials: {str(e)}")
+            logger.error(f"Error creating credentials object: {str(e)}")
             return None
     
     # Type alias for better readability
@@ -165,12 +206,13 @@ def fetch_group_emails(
         return
     
     try:
-        # Get Gmail API credentials
+        # Get Gmail API credentials from parameters, environment variables, or local files
         creds = get_credentials(gmail_token, gmail_secret)
         
         # Check if credentials are valid
         if not creds or not hasattr(creds, 'authorize'):
             logger.warning("Invalid Gmail credentials, using mock implementation")
+            logger.warning("Ensure GMAIL_TOKEN environment variable is set or token.json file exists")
             mock_email = {
                 "from_email": "sender@example.com",
                 "to_email": email_address,
@@ -488,8 +530,11 @@ def send_email(
         return True
         
     try:
-        # Get Gmail API credentials
-        creds = get_credentials()
+        # Get Gmail API credentials from environment variables or local files
+        creds = get_credentials(
+            gmail_token=os.getenv("GMAIL_TOKEN"),
+            gmail_secret=os.getenv("GMAIL_SECRET")
+        )
         service = build("gmail", "v1", credentials=creds)
         
         try:
@@ -614,8 +659,11 @@ def get_calendar_events(dates: List[str]) -> str:
         return result
         
     try:
-        # Get Gmail API credentials
-        creds = get_credentials()
+        # Get Gmail API credentials from environment variables or local files
+        creds = get_credentials(
+            gmail_token=os.getenv("GMAIL_TOKEN"),
+            gmail_secret=os.getenv("GMAIL_SECRET")
+        )
         service = build("calendar", "v3", credentials=creds)
         
         result = "Calendar events:\n\n"
@@ -802,8 +850,11 @@ def send_calendar_invite(
         return True
         
     try:
-        # Get Gmail API credentials
-        creds = get_credentials()
+        # Get Gmail API credentials from environment variables or local files
+        creds = get_credentials(
+            gmail_token=os.getenv("GMAIL_TOKEN"),
+            gmail_secret=os.getenv("GMAIL_SECRET")
+        )
         service = build("calendar", "v3", credentials=creds)
         
         # Create event details
@@ -877,3 +928,15 @@ def schedule_meeting_tool(
             return "Failed to schedule meeting"
     except Exception as e:
         return f"Error scheduling meeting: {str(e)}"
+    
+def mark_as_read(
+    message_id,
+    gmail_token: str | None = None,
+    gmail_secret: str | None = None,
+):
+    creds = get_credentials(gmail_token, gmail_secret)
+
+    service = build("gmail", "v1", credentials=creds)
+    service.users().messages().modify(
+        userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}
+    ).execute()

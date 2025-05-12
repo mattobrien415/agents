@@ -1,36 +1,40 @@
 # Gmail Integration Tools
 
-This directory contains tools for integrating with Gmail and Google Calendar APIs to enable the email assistant to work with real emails and calendar events.
+Connect your email assistant to Gmail and Google Calendar APIs.
 
-## Features
+## Graph
 
-- **Email Fetching**: Retrieve recent emails from your Gmail account
-- **Email Sending**: Send replies to email threads
-- **Calendar Availability**: Check your Google Calendar for availability on specific dates
-- **Meeting Scheduling**: Create calendar events and send invites to attendees
+The `src/email_assistant/email_assistant_hitl_memory_gmail.py` graph is configured to use Gmail tools.
+  
+You simply need to run the setup below to obtain the credentials needed to run the graph with your own email.
 
-## Setup Instructions
+## Setup Credentials
 
-### 1. Set up Google Cloud Project and Enable Gmail API
+### 1. Set up Google Cloud Project and Enable Required APIs
 
-1. Enable the Gmail API by clicking the blue "Enable API" button [here](https://developers.google.com/gmail/api/quickstart/python#enable_the_api)
+#### Enable Gmail and Calendar APIs
 
-2. Authorize credentials for a desktop application [here](https://developers.google.com/workspace/gmail/api/quickstart/python#authorize_credentials_for_a_desktop_application)
-- Go to Clients 
-- Create Client
-- Application type > Desktop app
-- Create
-- Under "Audience" select "External" if you're using a personal email (non-Google Workspace)
+1. Go to the [Google APIs Library and enable the Gmail API](https://developers.google.com/workspace/gmail/api/quickstart/python#enable_the_api)
+2. Go to the [Google APIs Library and enable the Google Calendar API](https://developers.google.com/workspace/calendar/api/quickstart/python#enable_the_api)
+
+#### Create OAuth Credentials
+
+1. Authorize credentials for a desktop application [here](https://developers.google.com/workspace/gmail/api/quickstart/python#authorize_credentials_for_a_desktop_application)
+2. Go to Credentials → Create Credentials → OAuth Client ID
+3. Set Application Type to "Desktop app"
+4. Click "Create"
+
+> Note: If using a personal email (non-Google Workspace) select "External" under "Audience"
 
 <img width="1496" alt="Screenshot 2025-04-26 at 7 43 57 AM" src="https://github.com/user-attachments/assets/718da39e-9b10-4a2a-905c-eda87c1c1126" />
 
-- Add yourself as a test user
+> Then, add yourself as a test user
 
 <img width="1622" alt="Screenshot 2025-04-26 at 7 46 32 AM" src="https://github.com/user-attachments/assets/0489ad7e-0acd-4abd-b309-7c97ce705932" />
+ 
+5. Save the downloaded JSON file (you'll need this in the next step)
 
-3. Save the downloaded JSON file
-
-### 3. Set Up Authentication Files
+### 2. Set Up Authentication Files
 
 1. Move your downloaded client secret JSON file to the `.secrets` directory
 
@@ -53,49 +57,36 @@ python src/email_assistant/tools/gmail/setup_gmail.py
 -  This will create a `token.json` file in the `.secrets` directory
 -  This token will be used for Gmail API access
 
-### 4. Run the Gmail Ingestion Script
+## Use With A Local Deployment
 
-1. Once you have authentication set up, you can run the Gmail ingestion script. 
+### 1. Run the Gmail Ingestion Script with Locally Running LangGraph Server
 
-2. Start the locally running LangGraph server in one terminal:
+1. Once you have authentication set up, run LangGraph server locally:
 
 ```
 langgraph dev
 ```
 
-3. Run the ingestion script in another terminal:
+2. Run the ingestion script in another terminal with desired parameters:
 
 ```bash
-python src/email_assistant/tools/gmail/run_ingest.py --email rlance.martin@gmail.com --minutes-since 1000
+python src/email_assistant/tools/gmail/run_ingest.py --email lance@langgraph.dev --minutes-since 1000
 ```
 
-- This will fetch emails from the past 1000 minutes and process them with your email assistant.
+- By default, this will use the local deployment URL (http://127.0.0.1:2024) and fetch emails from the past 1000 minutes.
 - It will use the LangGraph SDK to pass each email to the locally running email assistant.
+- It will use the `email_assistant_hitl_memory_gmail` graph, which is configured to use Gmail tools.
 
-#### Important Ingestion Parameters:
+#### Parameters:
 
-- `--graph-name`: Name of the LangGraph to use (default: "email_assistant_hitl_memory")
+- `--graph-name`: Name of the LangGraph to use (default: "email_assistant_hitl_memory_gmail")
 - `--email`: The email address to fetch messages from (alternative to setting EMAIL_ADDRESS)
 - `--minutes-since`: Only process emails that are newer than this many minutes (default: 60)
 - `--url`: URL of the LangGraph deployment (default: http://127.0.0.1:2024)
 - `--rerun`: Process emails that have already been processed (default: false)
 - `--early`: Stop after processing one email (default: false)
-- `--mock`: Run in mock mode without requiring a LangGraph server
 - `--include-read`: Include emails that have already been read (by default only unread emails are processed)
 - `--skip-filters`: Process all emails without filtering (by default only latest messages in threads where you're not the sender are processed)
-- `--enable-tracing`: Enable LangSmith tracing (requires LANGCHAIN_API_KEY to be set)
-- `--langsmith-api-key`: LangSmith API key for tracing (alternative to setting LANGCHAIN_API_KEY)
-- `--langsmith-project`: LangSmith project name for tracing (default: "gmail-assistant")
-
-#### Flag Combinations:
-
-- `--rerun --early`: Process one email (regardless if it was processed before) and stop
-- `--rerun`: Process all emails, including ones previously processed by LangGraph
-- `--early`: Process only one new (previously unprocessed) email and stop
-- (no flags): Process only new (previously unprocessed) emails
-- `--include-read --skip-filters`: Process all emails, including ones marked as read and ones that would normally be filtered out
-- `--minutes-since 1000 --include-read --skip-filters`: Process all emails from the past ~16 hours without any filtering
-- `--enable-tracing --langsmith-project "my-project"`: Process emails with LangSmith tracing enabled
 
 #### Troubleshooting:
 
@@ -105,6 +96,92 @@ python src/email_assistant/tools/gmail/run_ingest.py --email rlance.martin@gmail
   - Use the `--skip-filters` flag to include all messages (not just the latest in a thread, and including ones you sent)
   - Try running with all options to process everything: `--include-read --skip-filters --minutes-since 1000`
   - Use the `--mock` flag to test the system with simulated emails
+
+### 2. Connect to Agent Inbox
+
+After ingestion, you can access your all interrupted threads in Agent Inbox (https://dev.agentinbox.ai/):
+* Deployment URL: http://127.0.0.1:2024
+* Assistant/Graph ID: `email_assistant_hitl_memory_gmail`
+* Name: `Graph Name`
+
+## Run A Hosted Deployment
+
+### 1. Deploy to LangGraph Platform
+
+1. Navigate to the deployments page in LangSmith
+2. Click New Deployment
+3. Connect it to your fork of the [this repo](https://github.com/langchain-ai/agents-from-scratch) and desired branch
+4. Give it a name like `Yourname-Email-Assistant`
+5. Add the following environment variables:
+   * `OPENAI_API_KEY`
+   * `GMAIL_SECRET` - This is the full dictionary in `.secrets/secrets.json`
+   * `GMAIL_TOKEN` - This is the full dictionary in `.secrets/token.json`
+6. Click Submit 
+7. Get the `API URL` (https://your-email-assistant-xxx.us.langgraph.app) from the deployment page 
+
+### 2. Run Ingestion with Hosted Deployment
+
+Once your LangGraph deployment is up and running, you can test the email ingestion with:
+
+```bash
+python src/email_assistant/tools/gmail/run_ingest.py --email lance@langchain.dev --minutes-since 2440 --include-read --url https://your-email-assistant-xxx.us.langgraph.app
+```
+
+### 3. Connect to Agent Inbox
+
+After ingestion, you can access your all interrupted threads in Agent Inbox (https://dev.agentinbox.ai/):
+* Deployment URL: https://your-email-assistant-xxx.us.langgraph.app
+* Assistant/Graph ID: `email_assistant_hitl_memory_gmail`
+* Name: `Graph Name`
+* LangSmith API Key: `LANGSMITH_API_KEY`
+
+### 4. Set up Cron Job
+
+With a hosted deployment, you can set up a cron job to run the ingestion script at a specified interval.
+
+To automate email ingestion, set up a scheduled cron job using the included setup script:
+
+```bash
+python src/email_assistant/tools/gmail/setup_cron.py --email lance@langchain.dev --url https://lance-email-assistant-4681ae9646335abe9f39acebbde8680b.us.langgraph.app 
+```
+
+#### Parameters:
+
+- `--email`: Email address to fetch messages for (required)
+- `--url`: LangGraph deployment URL (required)
+- `--minutes-since`: Only fetch emails newer than this many minutes (default: 60)
+- `--schedule`: Cron schedule expression (default: "*/10 * * * *" = every 10 minutes)
+- `--graph-name`: Name of the graph to use (default: "email_assistant_hitl_memory_gmail")
+- `--include-read`: Include emails marked as read (by default only unread emails are processed) (default: false)
+
+#### How the Cron Works
+
+The cron consists of two main components:
+
+1. **`src/email_assistant/cron.py`**: Defines a simple LangGraph graph that:
+   - Calls the same `fetch_and_process_emails` function used by `run_ingest.py`
+   - Wraps this in a simple graph so that it can be run as a hosted cron using LangGraph Platform
+
+2. **`src/email_assistant/tools/gmail/setup_cron.py`**: Creates the scheduled cron job:
+   - Uses LangGraph SDK `client.crons.create` to create a cron job for the hosted `cron.py` graph
+
+#### Managing Cron Jobs
+
+To view, update, or delete existing cron jobs, you can use the LangGraph SDK:
+
+```python
+from langgraph_sdk import get_client
+
+# Connect to deployment
+client = get_client(url="https://your-deployment-url.us.langgraph.app")
+
+# List all cron jobs
+cron_jobs = await client.crons.list()
+print(cron_jobs)
+
+# Delete a cron job
+await client.crons.delete(cron_job_id)
+```
 
 ## How Gmail Ingestion Works
 
@@ -203,101 +280,3 @@ The Gmail API has several limitations that affect email ingestion:
    - Initial search to find relevant message IDs
    - Secondary thread retrieval to get complete conversations
    - This two-stage process is necessary because search doesn't guarantee complete thread information
-
-## When to Use `--skip-filters`
-
-### Use `--skip-filters` When:
-
-- **Latest Messages Are Missing**: The thread contains newer messages that aren't being processed
-- **Complete Thread Context Needed**: You want to ensure you have the most up-to-date conversation context
-- **Debugging Thread Issues**: You need to see which messages exist in threads vs. which are being processed
-- **Initial Data Loading**: You're populating the system with existing conversations
-- **Inconsistent Results**: You notice some messages are being skipped or processed out of order
-
-### When NOT to Use `--skip-filters`:
-
-- **Day-to-Day Operation**: For routine email processing, the default filters provide a natural workflow
-- **Avoiding Duplicates**: To prevent reprocessing messages that have already been handled
-- **Targeting Specific Messages**: When you want to process exactly the messages that match your search criteria
-- **Processing Only New Correspondence**: When you want to handle only new, unread messages directed to you
-
-### Behavior With `--skip-filters` Enabled:
-
-1. The system still uses search to find relevant thread IDs
-2. For each thread found, it fetches ALL messages in that thread
-3. It sorts all messages by timestamp to identify the truly latest message
-4. It processes the latest message in each thread, even if:
-   - That message wasn't in the original search results
-   - That message was sent by you
-   - That message isn't the latest in the original search results
-
-This ensures you're always working with the most current state of each conversation.
-
-## Known Limitations and Troubleshooting
-
-- **Indexing Delays**: The Gmail API's search might miss very recent messages (added in the last few minutes)
-- **Inconsistent Threading**: Gmail's thread IDs are consistent within a session but might change across API calls
-- **Message Visibility**: Some messages might be excluded due to Gmail's categorization (Promotions, Updates, etc.)
-- **Rate Limits**: The Gmail API has rate limits that could affect processing of large email volumes
-
-If messages appear to be missing:
-- Use a larger `--minutes-since` value to cast a wider time net
-- Enable `--include-read` to include messages you've already read
-- Enable `--skip-filters` to process the latest message in each thread
-- Try the combination: `--minutes-since 1440 --include-read --skip-filters`
-
-- **Connection errors:** If you get "Connection refused" or "All connection attempts failed" errors:
-  - Make sure the LangGraph server is running with `langgraph start` in a separate terminal
-  - Verify the port number matches in your script (default is 2024)
-  - Use the `--mock` flag to test without a LangGraph server: `--mock`
-
-## Recent Updates and Fixes
-
-The Gmail integration has been updated with several improvements:
-
-1. **Improved Thread Processing**: Now properly retrieves all messages in a thread, not just the ones found by search
-   - Added comprehensive logging of thread messages with dates and senders
-   - Fixed sorting to ensure the truly latest message is identified
-
-2. **Enhanced `--skip-filters` Behavior**: When enabled, the system now:
-   - Processes the absolute latest message in the thread, even if it wasn't found in search
-   - Uses thread-based retrieval to bypass Gmail search limitations
-   - Shows detailed information about which messages are being processed
-
-3. **Thread ID Handling**: Improved how thread IDs are mapped between Gmail and LangGraph
-   - Uses MD5 hash to ensure consistent ID generation across runs
-   - Better error handling for thread ID mapping issues
-
-4. **Simplified Command-Line Interface**: 
-   - Improved flag handling with boolean flags for better usability
-   - Added LangSmith tracing options for better observability
-   - Simplified parameters and added clearer documentation
-
-5. **LangSmith Tracing Integration**: 
-   - Added support for tracing email processing through LangSmith
-   - Ensured tracing context is maintained across workflow interrupts
-   - Added explicit flags for controlling tracing behavior
-
-- **Authentication issues:** If you encounter a "Token has been expired or revoked" error, delete the existing `token.json` file and run the setup script again to generate a fresh token.
-- **Tracing issues:** If you're not seeing traces in LangSmith after interrupts, ensure you're using the latest version of LangSmith.
-
-## Using Gmail Tools in Your Agent
-
-To use Gmail tools in your agent, modify your agent code as follows:
-
-```python
-from src.email_assistant.tools import get_tools, get_tools_by_name
-from src.email_assistant.tools.gmail.prompt_templates import COMBINED_TOOLS_PROMPT
-
-# Get tools with Gmail integration enabled
-tools = get_tools(include_gmail=True)
-tools_by_name = get_tools_by_name(tools)
-
-# Use the combined tools prompt in your agent's system prompt
-system_prompt = agent_system_prompt.format(
-    tools_prompt=COMBINED_TOOLS_PROMPT,
-    # other parameters...
-)
-```
-
-See `src/email_assistant/gmail_assistant.py` for a complete example.

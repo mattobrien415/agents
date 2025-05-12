@@ -12,19 +12,12 @@ import uuid
 import hashlib
 import asyncio
 import argparse
+import os
 from pathlib import Path
 from datetime import datetime
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from langgraph_sdk import get_client
-
-# Setup nest_asyncio for asyncio support
-try:
-    import nest_asyncio
-    nest_asyncio.apply()
-    print("Applied nest_asyncio patch")
-except ImportError:
-    print("Warning: nest_asyncio not available. Install with: pip install nest_asyncio")
 
 # Setup paths
 _ROOT = Path(__file__).parent.absolute()
@@ -33,34 +26,76 @@ TOKEN_PATH = _SECRETS_DIR / "token.json"
 
 def extract_message_part(payload):
     """Extract content from a message part."""
-    if payload.get("body", {}).get("data"):
-        # Handle base64 encoded content
-        data = payload["body"]["data"]
-        decoded = base64.urlsafe_b64decode(data).decode("utf-8")
-        return decoded
-
-    # Handle multipart messages
+    # If this is multipart, process with preference for text/plain
     if payload.get("parts"):
-        text_parts = []
+        # First try to find text/plain part
         for part in payload["parts"]:
-            # Recursively process parts
+            mime_type = part.get("mimeType", "")
+            if mime_type == "text/plain" and part.get("body", {}).get("data"):
+                data = part["body"]["data"]
+                return base64.urlsafe_b64decode(data).decode("utf-8")
+                
+        # If no text/plain found, try text/html
+        for part in payload["parts"]:
+            mime_type = part.get("mimeType", "")
+            if mime_type == "text/html" and part.get("body", {}).get("data"):
+                data = part["body"]["data"]
+                return base64.urlsafe_b64decode(data).decode("utf-8")
+                
+        # If we still haven't found content, recursively check for nested parts
+        for part in payload["parts"]:
             content = extract_message_part(part)
             if content:
-                text_parts.append(content)
-        return "\n".join(text_parts)
+                return content
+    
+    # Not multipart, try to get content directly
+    if payload.get("body", {}).get("data"):
+        data = payload["body"]["data"]
+        return base64.urlsafe_b64decode(data).decode("utf-8")
 
     return ""
 
 def load_gmail_credentials():
-    """Load Gmail credentials from token.json"""
-    if not TOKEN_PATH.exists():
-        print(f"Error: Token file not found at {TOKEN_PATH}")
+    """
+    Load Gmail credentials from token.json or environment variables.
+    
+    This function attempts to load credentials from multiple sources in this order:
+    1. Environment variables GMAIL_TOKEN
+    2. Local file at token_path (.secrets/token.json)
+    
+    Returns:
+        Google OAuth2 Credentials object or None if credentials can't be loaded
+    """
+    token_data = None
+    
+    # 1. Try environment variable
+    env_token = os.getenv("GMAIL_TOKEN")
+    if env_token:
+        try:
+            token_data = json.loads(env_token)
+            print("Using GMAIL_TOKEN environment variable")
+        except Exception as e:
+            print(f"Could not parse GMAIL_TOKEN environment variable: {str(e)}")
+    
+    # 2. Try local file as fallback
+    if token_data is None:
+        if TOKEN_PATH.exists():
+            try:
+                with open(TOKEN_PATH, "r") as f:
+                    token_data = json.load(f)
+                print(f"Using token from {TOKEN_PATH}")
+            except Exception as e:
+                print(f"Could not load token from {TOKEN_PATH}: {str(e)}")
+        else:
+            print(f"Token file not found at {TOKEN_PATH}")
+    
+    # If we couldn't get token data from any source, return None
+    if token_data is None:
+        print("Could not find valid token data in any location")
         return None
-        
+    
     try:
-        with open(TOKEN_PATH, "r") as f:
-            token_data = json.load(f)
-            
+        # Create credentials object
         credentials = Credentials(
             token=token_data.get("token"),
             refresh_token=token_data.get("refresh_token"),
@@ -71,7 +106,7 @@ def load_gmail_credentials():
         )
         return credentials
     except Exception as e:
-        print(f"Error loading credentials: {str(e)}")
+        print(f"Error creating credentials object: {str(e)}")
         return None
 
 def extract_email_data(message):
@@ -112,19 +147,38 @@ async def ingest_email_to_langgraph(email_data, graph_name, url="http://127.0.0.
     )
     print(f"Gmail thread ID: {raw_thread_id} → LangGraph thread ID: {thread_id}")
     
+    thread_exists = False
     try:
         # Try to get existing thread info
         thread_info = await client.threads.get(thread_id)
+        thread_exists = True
         print(f"Found existing thread: {thread_id}")
     except Exception as e:
         # If thread doesn't exist, create it
         print(f"Creating new thread: {thread_id}")
         thread_info = await client.threads.create(thread_id=thread_id)
     
+    # If thread exists, clean up previous runs
+    if thread_exists:
+        try:
+            # List all runs for this thread
+            runs = await client.runs.list(thread_id)
+            
+            # Delete all previous runs to avoid state accumulation
+            for run_info in runs:
+                run_id = run_info.id
+                print(f"Deleting previous run {run_id} from thread {thread_id}")
+                try:
+                    await client.runs.delete(thread_id, run_id)
+                except Exception as e:
+                    print(f"Failed to delete run {run_id}: {str(e)}")
+        except Exception as e:
+            print(f"Error listing/deleting runs: {str(e)}")
+    
     # Update thread metadata with current email ID
     await client.threads.update(thread_id, metadata={"email_id": email_data["id"]})
     
-    # Create a run for this email
+    # Create a fresh run for this email
     print(f"Creating run for thread {thread_id} with graph {graph_name}")
     
     run = await client.runs.create(
@@ -140,8 +194,7 @@ async def ingest_email_to_langgraph(email_data, graph_name, url="http://127.0.0.
         multitask_strategy="rollback",
     )
     
-    print(f"Run created successfully")
-    print(f"View in LangGraph Studio: http://127.0.0.1:2024/threads/{thread_id}")
+    print(f"Run created successfully with thread ID: {thread_id}")
     
     return thread_id, run
 
@@ -246,7 +299,7 @@ def parse_args():
     parser.add_argument(
         "--graph-name", 
         type=str, 
-        default="email_assistant_hitl_memory",
+        default="email_assistant_hitl_memory_gmail",
         help="Name of the LangGraph to use"
     )
     parser.add_argument(
