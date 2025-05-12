@@ -29,6 +29,7 @@ wheels/
 !tests/*.ipynb
 
 # Virtual Environment
+.venv
 venv/
 env/
 ENV/
