@@ -64,7 +64,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--url",
         type=str,
-        default=None,
+        required=True,
         help="URL to the LangGraph server",
     )
     parser.add_argument(
