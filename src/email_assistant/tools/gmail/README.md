@@ -10,24 +10,38 @@ You need to run setup below to obtain the credentials needed to run the graph.
 
 ## Setup Credentials
 
-### 1. Set up Google Cloud Project and Enable Gmail API
+### 1. Set up Google Cloud Project and Enable Required APIs
 
-1. Enable the Gmail API by clicking the blue "Enable API" button [here](https://developers.google.com/gmail/api/quickstart/python#enable_the_api)
+#### Enable Gmail API
 
-2. Authorize credentials for a desktop application [here](https://developers.google.com/workspace/gmail/api/quickstart/python#authorize_credentials_for_a_desktop_application)
-- Go to Clients 
-- Create Client
-- Application type > Desktop app
-- Create
-- Under "Audience" select "External" if you're using a personal email (non-Google Workspace)
+1. Go to the [Google APIs Library](https://console.cloud.google.com/apis/library)
+2. Select your project (or create a new one)
+3. Search for "Gmail API" 
+4. Click on "Gmail API" and then click the blue "Enable" button
+
+#### Enable Google Calendar API
+
+1. Go to the [Google APIs Library](https://console.cloud.google.com/apis/library)
+2. Select your project
+3. Search for "Google Calendar API" 
+4. Click on "Google Calendar API" and then click the blue "Enable" button
+5. **IMPORTANT**: If you skip this step, you will get a 403 error when trying to use calendar-related functions
+
+#### Create OAuth Credentials
+
+1. Authorize credentials for a desktop application [here](https://developers.google.com/workspace/gmail/api/quickstart/python#authorize_credentials_for_a_desktop_application)
+2. Go to Credentials → Create Credentials → OAuth Client ID
+3. Set Application Type to "Desktop app"
+4. Click "Create"
+5. Under "Audience" select "External" if you're using a personal email (non-Google Workspace)
 
 <img width="1496" alt="Screenshot 2025-04-26 at 7 43 57 AM" src="https://github.com/user-attachments/assets/718da39e-9b10-4a2a-905c-eda87c1c1126" />
 
-- Add yourself as a test user
+6. Add yourself as a test user
 
 <img width="1622" alt="Screenshot 2025-04-26 at 7 46 32 AM" src="https://github.com/user-attachments/assets/0489ad7e-0acd-4abd-b309-7c97ce705932" />
 
-3. Save the downloaded JSON file
+7. Save the downloaded JSON file (you'll need this in the next step)
 
 ### 2. Set Up Authentication Files
 
@@ -385,24 +399,3 @@ The Gmail integration has been updated with several improvements:
 
 - **Authentication issues:** If you encounter a "Token has been expired or revoked" error, delete the existing `token.json` file and run the setup script again to generate a fresh token.
 - **Tracing issues:** If you're not seeing traces in LangSmith after interrupts, ensure you're using the latest version of LangSmith.
-
-## Using Gmail Tools in Your Agent
-
-To use Gmail tools in your agent, modify your agent code as follows:
-
-```python
-from src.email_assistant.tools import get_tools, get_tools_by_name
-from src.email_assistant.tools.gmail.prompt_templates import COMBINED_TOOLS_PROMPT
-
-# Get tools with Gmail integration enabled
-tools = get_tools(include_gmail=True)
-tools_by_name = get_tools_by_name(tools)
-
-# Use the combined tools prompt in your agent's system prompt
-system_prompt = agent_system_prompt.format(
-    tools_prompt=COMBINED_TOOLS_PROMPT,
-    # other parameters...
-)
-```
-
-See `src/email_assistant/gmail_assistant.py` for a complete example.

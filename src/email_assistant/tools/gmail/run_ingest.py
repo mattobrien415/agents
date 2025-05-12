@@ -56,15 +56,46 @@ def extract_message_part(payload):
     return ""
 
 def load_gmail_credentials():
-    """Load Gmail credentials from token.json"""
-    if not TOKEN_PATH.exists():
-        print(f"Error: Token file not found at {TOKEN_PATH}")
+    """
+    Load Gmail credentials from token.json or environment variables.
+    
+    This function attempts to load credentials from multiple sources in this order:
+    1. Environment variables GMAIL_TOKEN
+    2. Local file at token_path (.secrets/token.json)
+    
+    Returns:
+        Google OAuth2 Credentials object or None if credentials can't be loaded
+    """
+    token_data = None
+    
+    # 1. Try environment variable
+    env_token = os.getenv("GMAIL_TOKEN")
+    if env_token:
+        try:
+            token_data = json.loads(env_token)
+            print("Using GMAIL_TOKEN environment variable")
+        except Exception as e:
+            print(f"Could not parse GMAIL_TOKEN environment variable: {str(e)}")
+    
+    # 2. Try local file as fallback
+    if token_data is None:
+        if TOKEN_PATH.exists():
+            try:
+                with open(TOKEN_PATH, "r") as f:
+                    token_data = json.load(f)
+                print(f"Using token from {TOKEN_PATH}")
+            except Exception as e:
+                print(f"Could not load token from {TOKEN_PATH}: {str(e)}")
+        else:
+            print(f"Token file not found at {TOKEN_PATH}")
+    
+    # If we couldn't get token data from any source, return None
+    if token_data is None:
+        print("Could not find valid token data in any location")
         return None
-        
+    
     try:
-        with open(TOKEN_PATH, "r") as f:
-            token_data = json.load(f)
-            
+        # Create credentials object
         credentials = Credentials(
             token=token_data.get("token"),
             refresh_token=token_data.get("refresh_token"),
@@ -75,7 +106,7 @@ def load_gmail_credentials():
         )
         return credentials
     except Exception as e:
-        print(f"Error loading credentials: {str(e)}")
+        print(f"Error creating credentials object: {str(e)}")
         return None
 
 def extract_email_data(message):
