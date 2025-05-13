@@ -100,7 +100,7 @@ def triage_router(state: State) -> Command[Literal["response_agent", "__end__"]]
     - Company-wide announcements
     - Messages meant for other teams
     """
-    author, to, subject, email_thread, _ = parse_email(state["email_input"])
+    author, to, subject, email_thread = parse_email(state["email_input"])
     system_prompt = triage_system_prompt.format(
         background=default_background,
         triage_instructions=default_triage_instructions
