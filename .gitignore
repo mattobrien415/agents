@@ -23,6 +23,7 @@ wheels/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+.langgraph_checkpoint
 *.ipynb
 !notebooks/*.ipynb
 !notebooks/notebooks/*.ipynb
