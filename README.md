@@ -63,8 +63,8 @@ The repo is organized into the 4 sections, with a notebook for each and accompan
 For a brief introduction to LangGraph and some of the concepts used in this repo, see the [LangGraph 101 notebook](notebooks/langgraph_101.ipynb). This notebook explains the basics of chat models, tool calling, agents vs workflows, LangGraph nodes / edges / memory, and LangGraph Studio.
 
 ### Building an agent 
-* Notebook: `notebooks/agent.ipynb`
-* Code: `src/email_assistant/email_assistant.py`
+* Notebook: [notebooks/agent.ipynb](/notebooks/agent.ipynb)
+* Code: [src/email_assistant/email_assistant.py](/src/email_assistant/email_assistant.py)
 
 ![overview-agent](notebooks/img/overview_agent.png)
 
@@ -73,31 +73,31 @@ This notebook shows how to build the email assistant, combining an [email triage
 ![Screenshot 2025-04-04 at 4 06 18 PM](notebooks/img/studio.png)
 
 ### Evaluation 
-* Notebook: `notebooks/evaluation.ipynb`
+* Notebook: [notebooks/evaluation.ipynb](/notebooks/evaluation.ipynb)
 
 ![overview-eval](notebooks/img/overview_eval.png)
 
-This notebook introduces evaluation with an email dataset in `eval/email_dataset.py`. It shows how to run evaluations using Pytest and the LangSmith `evaluate` API. It runs evaluation for emails responses using LLM-as-a-judge as well as evaluations for tools calls and triage decisions.
+This notebook introduces evaluation with an email dataset in [eval/email_dataset.py](/eval/email_dataset.py). It shows how to run evaluations using Pytest and the LangSmith `evaluate` API. It runs evaluation for emails responses using LLM-as-a-judge as well as evaluations for tools calls and triage decisions.
 
 ![Screenshot 2025-04-08 at 8 07 48 PM](notebooks/img/eval.png)
 
 ### Human-in-the-loop 
-* Notebook: `notebooks/hitl.ipynb`
-* Code: `src/email_assistant/email_assistant_hitl.py`
+* Notebook: [notebooks/hitl.ipynb](/notebooks/hitl.ipynb)
+* Code: [src/email_assistant/email_assistant_hitl.py](/src/email_assistant/email_assistant_hitl.py)
 
 ![overview-hitl](notebooks/img/overview_hitl.png)
 
-This notebooks shows how to add human-in-the-loop (HITL), allowing the user to review specific tool calls (e.g., send email, schedule meeting). For this, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox) as an interface for human in the loop. You can see the linked code for the full implementation in `src/email_assistant/email_assistant_hitl.py`.
+This notebooks shows how to add human-in-the-loop (HITL), allowing the user to review specific tool calls (e.g., send email, schedule meeting). For this, we use [Agent Inbox](https://github.com/langchain-ai/agent-inbox) as an interface for human in the loop. You can see the linked code for the full implementation in [src/email_assistant/email_assistant_hitl.py](/src/email_assistant/email_assistant_hitl.py).
 
 ![Agent Inbox showing email threads](notebooks/img/agent-inbox.png)
 
 ### Memory  
-* Notebook: `notebooks/memory.ipynb`
-* Code: `src/email_assistant/email_assistant_hitl_memory.py`
+* Notebook: [notebooks/memory.ipynb](/notebooks/memory.ipynb)
+* Code: [src/email_assistant/email_assistant_hitl_memory.py](/src/email_assistant/email_assistant_hitl_memory.py)
 
 ![overview-memory](notebooks/img/overview_memory.png)  
 
-This notebook shows how to add memory to the email assistant, allowing it to learn from user feedback and adapt to preferences over time. The memory-enabled assistant (`email_assistant_hitl_memory.py`) uses the [LangGraph Store](https://langchain-ai.github.io/langgraph/concepts/memory/#long-term-memory) to persist memories. You can see the linked code for the full implementation in `src/email_assistant/email_assistant_hitl_memory.py`.
+This notebook shows how to add memory to the email assistant, allowing it to learn from user feedback and adapt to preferences over time. The memory-enabled assistant ([email_assistant_hitl_memory.py](/src/email_assistant/email_assistant_hitl_memory.py)) uses the [LangGraph Store](https://langchain-ai.github.io/langgraph/concepts/memory/#long-term-memory) to persist memories. You can see the linked code for the full implementation in [src/email_assistant/email_assistant_hitl_memory.py](/src/email_assistant/email_assistant_hitl_memory.py).
 
 ## Connecting to APIs  
 
@@ -109,13 +109,13 @@ Set up Google API credentials following the instructions in [Gmail Tools README]
 
 The README also explains how to deploy the graph to LangGraph Platform.
 
-The full implementation of the Gmail integration is in `src/email_assistant/email_assistant_hitl_memory_gmail.py`.
+The full implementation of the Gmail integration is in [src/email_assistant/email_assistant_hitl_memory_gmail.py](/src/email_assistant/email_assistant_hitl_memory_gmail.py).
 
 ## Running Tests
 
 The repository includes an automated test suite to evaluate the email assistant implementations. Tests verify correct tool usage and response quality using LangSmith for tracking.
 
-### Running Tests with `run_all_tests.py`
+### Running Tests with [run_all_tests.py](/tests/run_all_tests.py)
 
 The test runner supports testing different implementations of the email assistant:
 
